@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project PLAYBOOK AI Documentation Chatbot</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-block">
+        <div class="brand-mark">PB</div>
+        <div>
+          <h1>PLAYBOOK<br/>DocBot</h1>
+          <p>AI-guided process and procedure documentation</p>
+        </div>
+      </div>
+
+      <nav>
+        <button class="nav-btn active" data-view="chatView">Guided Chat</button>
+        <button class="nav-btn" data-view="draftView">Generated Draft</button>
+        <button class="nav-btn" data-view="rollupView">Process Roll-up</button>
+        <button class="nav-btn" data-view="matrixView">PLAYBOOK Matrix</button>
+        <button class="nav-btn" data-view="settingsView">AI Settings</button>
+      </nav>
+
+      <div class="progress-card">
+        <span>Completion</span>
+        <strong id="completionText">0%</strong>
+        <div class="progress-track"><div id="progressBar"></div></div>
+        <p id="progressHint">Start by answering the first question.</p>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h2>Project PLAYBOOK Documentation Assistant</h2>
+          <p>Captures procedure-level information, validates responses, explains documentation impact, and prepares process roll-up content.</p>
+        </div>
+        <div class="top-actions">
+          <button class="secondary" id="loadSampleBtn">Load sample</button>
+          <button class="ghost" id="resetBtn">Reset</button>
+          <button class="secondary" id="exportWordBtn">Export Word file</button>
+          <button class="primary" id="exportBtn">Export package</button>
+        </div>
+      </header>
+
+      <section id="chatView" class="view active">
+        <div class="hero">
+          <div>
+            <span class="pill">Guided capture</span>
+            <h3>Let the chatbot interview the process owner.</h3>
+            <p>The bot asks leading questions with selectable answers, then confirms the response before moving forward. Each answer is mapped to a PLAYBOOK document section.</p>
+          </div>
+          <div class="hero-panel">
+            <strong>Current target</strong>
+            <p id="currentTarget">Procedure / SOP capture with process roll-up readiness</p>
+          </div>
+        </div>
+
+        <div class="chat-layout">
+          <section class="chat-card">
+            <div class="chat-header">
+              <div>
+                <span class="stage" id="stageLabel">Stage</span>
+                <h3 id="questionText">Question</h3>
+                <p id="questionHelper">Helper text</p>
+              </div>
+              <span class="counter" id="questionCounter">1 / 1</span>
+            </div>
+            <div id="answerArea"></div>
+            <div class="validation-box" id="validationBox">
+              <h4>Validation and documentation impact</h4>
+              <p id="validationText">Your answer will be validated here.</p>
+            </div>
+            <div class="chat-actions">
+              <button class="ghost" id="backBtn">Back</button>
+              <button class="secondary" id="skipBtn">Skip for now</button>
+              <button class="primary" id="confirmBtn">Confirm and continue</button>
+            </div>
+          </section>
+
+          <aside class="answer-summary">
+            <h3>Captured Information</h3>
+            <div id="answerSummary"></div>
+          </aside>
+        </div>
+      </section>
+
+      <section id="draftView" class="view">
+        <div class="section-head">
+          <div>
+            <span class="pill">T4 output</span>
+            <h3>Generated Procedure / SOP Draft</h3>
+            <p>This draft now follows the uploaded MVP Procedure Word template structure and can be exported as a Word-compatible file.</p>
+          </div>
+          <button class="secondary" id="copyProcedureBtn">Copy procedure markdown</button>
+        </div>
+        <pre class="doc-output" id="procedureOutput"></pre>
+      </section>
+
+      <section id="rollupView" class="view">
+        <div class="section-head">
+          <div>
+            <span class="pill">T3 output</span>
+            <h3>Process Document Roll-up</h3>
+            <p>The chatbot summarizes T4 Procedure / SOP data into T3 Process Document content: SIPOC, RACI, risks, controls, KPIs, and linked documents.</p>
+          </div>
+          <button class="secondary" id="copyProcessBtn">Copy process markdown</button>
+        </div>
+        <pre class="doc-output" id="processOutput"></pre>
+      </section>
+
+      <section id="matrixView" class="view">
+        <div class="section-head">
+          <div>
+            <span class="pill">PLAYBOOK structure</span>
+            <h3>5-Tier Document Model</h3>
+            <p>This build uses the 5-tier structure from the uploaded PLAYBOOK Document Matrix and QA Checklist.</p>
+          </div>
+        </div>
+        <div id="tierCards" class="grid cols-2"></div>
+        <div class="card white qa-card">
+          <h3>Built-in QA Checks</h3>
+          <ul id="qaChecklist"></ul>
+        </div>
+      </section>
+
+      <section id="settingsView" class="view">
+        <div class="card white">
+          <span class="pill">Optional AI mode</span>
+          <h3>AI Settings</h3>
+          <p>This prototype works without an API key using guided logic. For real organizational deployment, use a secure backend or Microsoft-approved environment. Do not expose company API keys in public GitHub Pages.</p>
+          <label>OpenAI API key for local browser testing only</label>
+          <input id="apiKeyInput" type="password" placeholder="sk-proj-..." />
+          <button class="secondary" id="saveApiKeyBtn">Save to this browser session</button>
+          <button class="primary" id="aiImproveBtn">Improve current draft with AI</button>
+          <div class="warning-box">
+            <strong>Security note:</strong> Browser-side API keys are visible to the user’s machine. For production, use an Azure Function, Vercel/Netlify serverless function, or internal O365-approved service with tenant controls.
+          </div>
+          <pre class="doc-output small" id="aiOutput">AI output will appear here.</pre>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast"></div>
+  <script src="playbook_schema.js"></script>
+  <script src="app.js"></script>
+  <script src="word_template_output.js"></script>
+</body>
+</html>

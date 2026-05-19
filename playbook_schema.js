@@ -1,0 +1,202 @@
+const PLAYBOOK_SCHEMA = {
+  source: 'PLAYBOOK Document Matrix & QA Checklist - 5-Tier Structure',
+  tiers: [
+    {
+      id: 'T1',
+      name: 'Enterprise Process Architecture (EPA)',
+      purpose: 'Defines the domain hierarchy and ownership model.',
+      mustInclude: 'Scope statement, hierarchy map, L1-L4 structure, ownership, interfaces.',
+      mustNotDuplicate: 'Detailed procedures, screenshots, or task instructions.',
+      parent: 'None or enterprise governance source',
+      child: 'T2 Policy / T3 Process',
+      approval: 'Mancom / CEO',
+      reviewCycle: 'Annual or structural change',
+      sample: 'Procurement EPA'
+    },
+    {
+      id: 'T2',
+      name: 'Functional Policy',
+      purpose: 'Defines what must be true and what rules must be followed.',
+      mustInclude: 'Policy statements, applicability, exceptions authority, compliance rules.',
+      mustNotDuplicate: 'Detailed process maps or step-by-step instructions.',
+      parent: 'T1 EPA, if used',
+      child: 'T3 Process',
+      approval: 'Functional Head / Mancom',
+      reviewCycle: 'Annual or regulatory trigger',
+      sample: 'Procurement and Sourcing Policy'
+    },
+    {
+      id: 'T3',
+      name: 'Process Document',
+      purpose: 'Explains the end-to-end process and its controls.',
+      mustInclude: 'Purpose, policy summary, scope, SIPOC, RACI, process flow, risks, controls, interlinking, references.',
+      mustNotDuplicate: 'Full policy text, detailed task steps, or screen-by-screen guidance.',
+      parent: 'T2 Policy',
+      child: 'T4 Procedure / SOP',
+      approval: 'Process Owner',
+      reviewCycle: 'Semi-Annual / Annual',
+      sample: 'PR-to-PO Process'
+    },
+    {
+      id: 'T4',
+      name: 'Procedure / SOP',
+      purpose: 'Tells the user how a subprocess or activity cluster is executed.',
+      mustInclude: 'Scope, roles, prerequisites, numbered steps, approvals, control checks, exceptions, evidence, linked WIs.',
+      mustNotDuplicate: 'Enterprise architecture content or screen-level micro-instructions that belong in WI.',
+      parent: 'T3 Process',
+      child: 'T5 Work Instruction',
+      approval: 'Process Owner or SME',
+      reviewCycle: 'Semi-Annual',
+      sample: 'PR Preparation, Approval, Sourcing, and PO Issuance Procedure'
+    },
+    {
+      id: 'T5',
+      name: 'Work Instruction (WI)',
+      purpose: 'Shows the exact task or system action.',
+      mustInclude: 'Task trigger, exact steps, fields, validations, errors, troubleshooting, evidence.',
+      mustNotDuplicate: 'Process maps, policy narrative, or broad procedural content.',
+      parent: 'T4 Procedure / SOP',
+      child: 'None',
+      approval: 'SME / System Owner',
+      reviewCycle: 'Quarterly or on system change',
+      sample: 'SAP ME51N - Create PR'
+    }
+  ],
+  contentSections: [
+    { id: 'title', label: 'Document Title', mandatory: true, body: true, metadata: false, note: 'Title must clearly reflect the tier and operating level.' },
+    { id: 'code', label: 'Document Code / ID', mandatory: true, body: 'optional', metadata: true, note: 'Human-readable ID should match SharePoint Document Register naming logic.' },
+    { id: 'purpose', label: 'Purpose / Objective', mandatory: true, body: true, metadata: false, note: 'Purpose should fit the tier. A WI purpose must stay task-level.' },
+    { id: 'policy', label: 'Policy Statement / Governing Rule', mandatory: true, body: true, metadata: false, crossReference: true, note: 'Keep full policy as T2. Only summarize policy on the T3 front page.' },
+    { id: 'scope', label: 'Scope', mandatory: true, body: true, metadata: 'T1/T2 scope statement', note: 'Scope must be consistent with title and process boundaries.' },
+    { id: 'exclusions', label: 'Out of Scope / Exclusions', mandatory: 'recommended', body: true, metadata: false, note: 'Use exclusions to avoid overlap across tiers.' },
+    { id: 'trigger', label: 'Trigger / Starting Point', mandatory: true, body: true, metadata: false, note: 'Trigger must align with the tier’s level of detail.' },
+    { id: 'endpoint', label: 'End Point / Output', mandatory: true, body: true, metadata: false, note: 'Output must connect to the next downstream tier.' },
+    { id: 'processLevel', label: 'Process Level', mandatory: true, body: 'optional', metadata: true, note: 'Use metadata for hierarchy and reporting.' },
+    { id: 'roles', label: 'Roles and Responsibilities', mandatory: true, body: true, metadata: 'Owner/SME', note: 'RACI may sit in the body; owner and SME must also exist as metadata.' },
+    { id: 'inputs', label: 'Inputs', mandatory: true, body: true, metadata: false, note: 'Inputs should be practical and observable.' },
+    { id: 'outputs', label: 'Outputs', mandatory: true, body: true, metadata: false, note: 'Outputs should connect to the next downstream tier.' },
+    { id: 'systems', label: 'Systems Used', mandatory: 'recommended', body: 'T3-T5', metadata: true, note: 'For WI, system and screen reference should be mandatory metadata.' },
+    { id: 'records', label: 'Forms / Records Used', mandatory: true, body: true, metadata: 'links', note: 'Do not bury critical evidence only in narrative.' },
+    { id: 'flow', label: 'Process / Procedure Flow', mandatory: true, body: true, metadata: false, note: 'T3 shows flow and handoffs; T4 shows numbered procedure steps.' },
+    { id: 'raci', label: 'RACI / Responsibility Matrix', mandatory: true, body: true, metadata: false, note: 'Make accountability and handoffs explicit.' },
+    { id: 'decisions', label: 'Decision Points', mandatory: true, body: true, metadata: false, note: 'Decision points should define criteria, authority, and evidence.' },
+    { id: 'exceptions', label: 'Exceptions / Escalation', mandatory: true, body: true, metadata: false, note: 'Exceptions should not rely on informal judgment only.' },
+    { id: 'sla', label: 'Timeline / SLA', mandatory: 'recommended', body: true, metadata: false, note: 'Use SLA to support monitoring and accountability.' },
+    { id: 'kpi', label: 'KPIs / Monitoring', mandatory: 'recommended', body: true, metadata: false, note: 'KPIs should roll up to management monitoring.' },
+    { id: 'risks', label: 'Risks', mandatory: 'recommended', body: true, metadata: 'risk category', note: 'Do not overload WI with formal risk narrative.' },
+    { id: 'controls', label: 'Controls', mandatory: 'T3/T4 yes; T2 recommended', body: true, metadata: false, note: 'Controls should be visible and testable.' },
+    { id: 'interlinking', label: 'Interlinking Requirements', mandatory: true, body: 'summary', metadata: 'Document Links', note: 'Document Links list carries authoritative relationship data.' },
+    { id: 'impact', label: 'Impact Assessment Table', mandatory: 'recommended', body: 'T2/T3 summary', metadata: 'impact tasks', note: 'Detailed tasking belongs in SharePoint; show summary logic where useful.' },
+    { id: 'approval', label: 'Approval Requirements', mandatory: true, body: 'optional', metadata: true, note: 'Approver Type should be metadata-driven for Flow B.' },
+    { id: 'review', label: 'Review Cycle', mandatory: true, body: 'optional', metadata: true, note: 'Use metadata to drive reminders.' },
+    { id: 'evidence', label: 'Evidence / Records Retention', mandatory: 'recommended', body: true, metadata: 'reference links', note: 'Actual file links belong in SharePoint.' },
+    { id: 'references', label: 'Reference Tables', mandatory: 'recommended', body: true, metadata: false, crossReference: true, note: 'Avoid repeating full source content in lower tiers.' },
+    { id: 'metadataReadiness', label: 'SharePoint Metadata Readiness', mandatory: true, body: false, metadata: true, note: 'Verify in QA, not as long-form narrative.' },
+    { id: 'publishReadiness', label: 'Publish Readiness / QA Gate', mandatory: true, body: false, metadata: true, note: 'Do not publish if metadata and Document Links are incomplete.' }
+  ],
+  metadataFields: [
+    'Document Tier','Document Type','Document ID','Document Title','Process Domain','Process Level','Linked Process','Parent Document','Document Owner','SME','Approver Type','Document Status','Version','Effective Date','Review Cycle','Next Review Date','Confidentiality','Risk Category','System(s)','Screen / System Reference','Scope Statement','Draft Document Link','Published Document Link','Relationship Type','Tier From','Tier To','Directionality','Active Link Flag','Impact Assessment Trigger','Supporting References'
+  ],
+  relationshipTypes: [
+    'Policy-governs-Process',
+    'Process-implements-Procedure/SOP',
+    'Procedure/SOP-references-WI',
+    'Procedure/SOP-uses-Form-or-Record',
+    'Cross-Process Dependency',
+    'Supporting Reference'
+  ],
+  processLevels: ['L1 Domain', 'L2 Process Group', 'L3 Process', 'L4 Subprocess / Activity Cluster', 'L5 Task / WI'],
+  purposeOptions: [
+    'Standardize ways of working',
+    'Clarify roles, ownership, and handoffs',
+    'Strengthen controls and documentation discipline',
+    'Improve cycle time and execution consistency',
+    'Ensure policy, DOA, regulatory, or contractual compliance'
+  ],
+  riskCategories: [
+    'Unauthorized transaction','Compliance breach','Operational delay','Incomplete or inaccurate records','Unclear accountability','Weak segregation of duties','Vendor or third-party risk','Financial leakage','Inventory loss','Data privacy/security','Customer or store impact'
+  ],
+  controlTypes: ['Preventive','Detective','Corrective','Compensating','System-enforced','Manual review','Approval control','Completeness check','Exception approval','Reconciliation'],
+  frequencyOptions: ['Per transaction','Daily','Weekly','Monthly','Quarterly','Semi-Annual','Annual','As needed','On system/UI change'],
+  evidenceTypes: ['Approved form','SharePoint record','System report','Email approval','Workflow approval log','Checklist','Dashboard','Meeting minutes','Exception log','Signed document','Screenshot / screen reference'],
+  confidentialityOptions: ['General','Internal','Restricted','Confidential'],
+  qaChecks: [
+    'Is the document classified under the correct tier?',
+    'Is the content at the right level of detail for the tier?',
+    'Is any content duplicated from another tier instead of cross-referenced?',
+    'Does the document contain the mandatory sections for its tier?',
+    'For T3, is there a Governing Policy Summary on the front page?',
+    'For T4, are steps prescriptive enough to execute the activity consistently?',
+    'Is Document Tier complete and correct?',
+    'Is Process Domain populated?',
+    'Is Linked Process populated for T3-T5?',
+    'Is Parent Document identified and correct?',
+    'Are SMEs identified where needed?',
+    'Is the Review Cycle aligned to tier?',
+    'Are required Document Links prepared before review/publish?',
+    'Are downstream dependent documents identified?',
+    'Would Flow E have enough linked data to create impact tasks?',
+    'Does the approver align with the defined tier rule?',
+    'Can the file be registered in the Document Register without missing mandatory fields?',
+    'Would this document complement the SharePoint build rather than duplicate it?'
+  ]
+};
+
+const PLAYBOOK_QUESTIONS = [
+  { id: 'docMode', stage: 'Document Intent', section: 'Tier Classification', question: 'What documentation output are we preparing first?', helper: 'The uploaded matrix places Procedure / SOP under T4 and Process Document under T3. Best fit is to capture T4 now, then roll it up to T3.', type: 'single', options: [
+    { value: 't4-first', label: 'T4 Procedure / SOP first', impact: 'The bot will collect scope, roles, prerequisites, numbered steps, control checks, exceptions, evidence, and linked WIs.' },
+    { value: 't4-to-t3', label: 'T4 Procedure / SOP now, then T3 Process roll-up', impact: 'Recommended. Procedure answers will later summarize into process purpose, SIPOC, RACI, risks, controls, KPIs, and document links.' },
+    { value: 't3-first', label: 'T3 Process Document first', impact: 'The bot will stay at end-to-end process level and avoid detailed task steps.' }
+  ]},
+  { id: 'processDomain', stage: 'SharePoint Metadata', section: 'Process Domain', question: 'Which process domain owns this document?', helper: 'This becomes the Process Domain metadata field and drives filtering, ownership, and reporting.', type: 'text', placeholder: 'Example: Procurement, Human Capital, Finance, Store Operations, Logistics' },
+  { id: 'processLevel', stage: 'SharePoint Metadata', section: 'Process Level', question: 'What process level is this procedure closest to?', helper: 'For T4 Procedure / SOP, this is usually L4 subprocess or activity cluster. It should link upward to an L3 Process Document.', type: 'single', optionsFrom: 'processLevels' },
+  { id: 'linkedProcess', stage: 'Hierarchy', section: 'Linked Process', question: 'What T3 process will this procedure support or roll up into?', helper: 'This becomes the Linked Process metadata and parent-child navigation link.', type: 'text', placeholder: 'Example: Purchase Requisition to Purchase Order (PR-to-PO) Process' },
+  { id: 'parentPolicy', stage: 'Hierarchy', section: 'Parent Document', question: 'What governing policy or rule should this procedure reference?', helper: 'For a T4 Procedure, the parent is normally a T3 Process, but the procedure should still reference the T2 policy or governing rule where relevant.', type: 'text', placeholder: 'Example: Procurement and Sourcing Policy; Delegation of Authority' },
+  { id: 'procedureTitle', stage: 'Document Identity', section: 'Document Title', question: 'What is the working title of the Procedure / SOP?', helper: 'A good T4 title names the subprocess or activity cluster. Avoid titles that are too broad for a procedure.', type: 'text', placeholder: 'Example: PR Preparation, Approval, Sourcing, and PO Issuance Procedure' },
+  { id: 'documentOwner', stage: 'Ownership', section: 'Document Owner', question: 'Who is the accountable document owner?', helper: 'Use the role or function accountable for content and periodic review, not merely the preparer.', type: 'text', placeholder: 'Example: Purchasing Head' },
+  { id: 'smes', stage: 'Ownership', section: 'SME', question: 'Who are the SMEs or reviewers needed for this procedure?', helper: 'For T3-T5, SME metadata is required so review routing and future updates do not depend on memory.', type: 'tags', placeholder: 'Example: Senior Buyer, Finance Reviewer, Regulatory Reviewer, SAP SME' },
+  { id: 'purpose', stage: 'Purpose / Objective', section: 'Purpose', question: 'What is the purpose of this procedure?', helper: 'The matrix says the purpose must fit the tier. For T4, explain why this operating document exists and what standard method it establishes.', type: 'multi', optionsFrom: 'purposeOptions' },
+  { id: 'purposeFreeText', stage: 'Purpose / Objective', section: 'Purpose', question: 'Write the plain-language purpose statement.', helper: 'The bot will keep your wording and use the selected purpose themes as supporting context.', type: 'text', placeholder: 'Example: Defines the standard method for PR preparation, review, approval, sourcing, and PO issuance.' },
+  { id: 'scope', stage: 'Scope', section: 'Scope', question: 'What is covered by this Procedure / SOP?', helper: 'Scope defines applicability and prevents users from applying the procedure to the wrong activity.', type: 'text', placeholder: 'Example: Covers PR preparation, approval routing, sourcing steps, supplier selection, and PO creation.' },
+  { id: 'outOfScope', stage: 'Scope Boundary', section: 'Out of Scope / Exclusions', question: 'What is specifically excluded?', helper: 'Exclusions avoid duplication across tiers and identify related documents.', type: 'text', placeholder: 'Example: Does not cover vendor accreditation lifecycle, goods receipt, invoice matching, or payment.' },
+  { id: 'trigger', stage: 'Trigger / Starting Point', section: 'Trigger', question: 'What triggers this procedure?', helper: 'The trigger defines when users start following this document.', type: 'multi', options: [
+    { value: 'business-need', label: 'Business need or request arises', impact: 'The procedure should define request intake and prerequisite information.' },
+    { value: 'approval-needed', label: 'Approval is required', impact: 'The procedure should define authority, routing, and approval evidence.' },
+    { value: 'system-workflow', label: 'System transaction or workflow starts', impact: 'The procedure should name system records, workflow logs, and validation checks.' },
+    { value: 'scheduled-cycle', label: 'Scheduled or periodic activity', impact: 'The procedure should define calendar, frequency, owner, and monitoring evidence.' },
+    { value: 'exception-event', label: 'Exception or issue occurs', impact: 'The procedure should define escalation, exception authority, and closure evidence.' }
+  ]},
+  { id: 'triggerFreeText', stage: 'Trigger / Starting Point', section: 'Trigger', question: 'State the exact starting point in your own words.', helper: 'This wording will be used in the T4 procedure and rolled up into the T3 process boundary.', type: 'text', placeholder: 'Example: Requestor receives an approved business need and begins PR preparation.' },
+  { id: 'endPoint', stage: 'End Point / Output', section: 'End Point', question: 'When is the procedure considered complete?', helper: 'This defines closure evidence and downstream handoff.', type: 'text', placeholder: 'Example: Approved PR is sourced, supplier selected, and PO issued in SAP.' },
+  { id: 'inputs', stage: 'Inputs', section: 'Inputs', question: 'What inputs must be available before the procedure starts?', helper: 'Inputs should be practical and observable.', type: 'tags', placeholder: 'Example: Approved requirement details, specifications, quotations, request justification' },
+  { id: 'outputs', stage: 'Outputs', section: 'Outputs', question: 'What outputs or records are produced?', helper: 'Outputs should connect to downstream process steps and evidence retention.', type: 'tags', placeholder: 'Example: Approved PR, bid evaluation, supplier selection record, PO created' },
+  { id: 'systems', stage: 'Systems Used', section: 'Systems', question: 'Which systems, tools, or repositories are used?', helper: 'Systems become metadata and support findability, access review, and audit trail.', type: 'tags', placeholder: 'Example: SAP, SharePoint, email approval, vendor database, Power Automate' },
+  { id: 'records', stage: 'Forms / Records Used', section: 'Forms / Records', question: 'What forms, templates, or records are used or created?', helper: 'This section becomes evidence and reference links. Bulky files should sit in SharePoint References & Evidence, not inside the procedure body.', type: 'tags', placeholder: 'Example: PR form, bid tabulation, vendor evaluation, PO checklist' },
+  { id: 'roles', stage: 'Roles and Responsibilities', section: 'Roles', question: 'What key roles participate in the procedure?', helper: 'Use function-based roles. These will populate RACI and role-by-step responsibilities.', type: 'tags', placeholder: 'Example: Requestor, Supervisor, Department Head, Buyer, Purchasing Head, Approver' },
+  { id: 'raci', stage: 'RACI', section: 'RACI / Responsibility Matrix', question: 'What accountability pattern best fits this procedure?', helper: 'The draft will translate this into a starter RACI table that must be validated by the process owner.', type: 'single', options: [
+    { value: 'single-owner', label: 'One accountable process owner, multiple responsible performers', impact: 'RACI will emphasize one clear A and several R roles.' },
+    { value: 'cross-functional', label: 'Cross-functional handoffs with multiple reviewers', impact: 'RACI will emphasize handoffs, reviewer roles, and decision ownership.' },
+    { value: 'system-driven', label: 'System workflow drives routing and approvals', impact: 'RACI will include system/workflow evidence and approver action points.' },
+    { value: 'committee-or-council', label: 'Committee/council approval or governance cadence', impact: 'RACI will include meeting records, governance body, and decision minutes.' }
+  ]},
+  { id: 'criticalSteps', stage: 'Procedure Flow', section: 'Procedure Flow', question: 'List the numbered procedure steps in order.', helper: 'For T4, steps must be prescriptive enough to execute consistently but should not go into screen-level micro-instructions, which belong in T5 WI.', type: 'steps' },
+  { id: 'decisionPoints', stage: 'Decision Points', section: 'Decision Points', question: 'What decision points require criteria, authority, or evidence?', helper: 'Decision points often become controls and approval requirements.', type: 'tags', placeholder: 'Example: Approved / Approved with Conditions / Pending / Rejected' },
+  { id: 'exceptions', stage: 'Exceptions / Escalation', section: 'Exceptions', question: 'What exceptions can happen and how should they be handled?', helper: 'The matrix treats exceptions and escalation as mandatory. Avoid informal escalation like “ask manager” without defining authority and evidence.', type: 'text', placeholder: 'Example: Incomplete documents are returned; urgent requests require provisional approval, expiry date, and monitoring.' },
+  { id: 'sla', stage: 'Timeline / SLA', section: 'Timeline / SLA', question: 'What timelines, SLAs, or aging rules should apply?', helper: 'SLA supports monitoring and governance; if none exists, state TBD rather than inventing one.', type: 'text', placeholder: 'Example: Buyer completeness check within 2 business days; pending evaluator reviews aged weekly.' },
+  { id: 'risks', stage: 'Risks', section: 'Risks', question: 'Which risks should this procedure manage?', helper: 'Risks drive control points, evidence, and QA review focus.', type: 'multi', optionsFrom: 'riskCategories' },
+  { id: 'controls', stage: 'Controls', section: 'Controls', question: 'What control types are needed?', helper: 'For T3/T4, controls should be visible and testable.', type: 'multi', optionsFrom: 'controlTypes' },
+  { id: 'evidence', stage: 'Evidence / Records Retention', section: 'Evidence', question: 'What evidence proves the procedure was followed?', helper: 'This becomes the evidence and retention section and supports future auditability.', type: 'multi', optionsFrom: 'evidenceTypes' },
+  { id: 'kpis', stage: 'KPIs / Monitoring', section: 'KPIs', question: 'What KPIs or monitoring checks should management review?', helper: 'KPIs help roll the T4 procedure up into a T3 process governance view.', type: 'tags', placeholder: 'Example: Cycle time, backlog, exception rate, SLA compliance, aging requests' },
+  { id: 'relatedDocs', stage: 'Interlinking', section: 'Related Documents', question: 'What related documents, WIs, forms, or references should be linked?', helper: 'Document Links power hierarchy navigation and Flow E impact assessment.', type: 'tags', placeholder: 'Example: Parent T3 process, related T5 WI, forms, templates, policy, training asset' },
+  { id: 'relationshipTypes', stage: 'Interlinking', section: 'Relationship Type', question: 'Which relationship types apply?', helper: 'The Document Links list should carry authoritative relationship data, not just narrative references.', type: 'multi', optionsFrom: 'relationshipTypes' },
+  { id: 'impactTriggers', stage: 'Impact Assessment', section: 'Impact Assessment', question: 'If this procedure changes, what downstream items may be affected?', helper: 'For T4, likely impacts include T5 WIs, forms, training, approval paths, and monitoring reports.', type: 'multi', options: [
+    { value: 'work-instructions', label: 'Linked T5 Work Instructions', impact: 'Flow E should notify WI owners to assess screen/task-level changes.' },
+    { value: 'forms-records', label: 'Forms / records / templates', impact: 'Templates and forms may need field or instruction updates.' },
+    { value: 'training', label: 'Training / communication materials', impact: 'Rollout materials may require update before publication.' },
+    { value: 'system-workflow', label: 'System workflow or access rules', impact: 'IT/system owner review may be needed.' },
+    { value: 'kpi-dashboard', label: 'KPI dashboard or monitoring report', impact: 'Metrics and dashboard logic may need update.' }
+  ]},
+  { id: 'approvers', stage: 'Approval Requirements', section: 'Approval', question: 'Who should review or approve this document before publication?', helper: 'For T4, approval is usually Process Owner or SME per the uploaded matrix.', type: 'tags', placeholder: 'Example: Process Owner, Purchasing Head, Finance Reviewer, Regulatory Reviewer, SAP SME' },
+  { id: 'confidentiality', stage: 'SharePoint Metadata', section: 'Confidentiality', question: 'What confidentiality level should be applied?', helper: 'Confidentiality controls access and filtered views. Use the least restrictive classification that still protects sensitive content.', type: 'single', optionsFrom: 'confidentialityOptions' },
+  { id: 'reviewCycle', stage: 'Review Cycle', section: 'Review Cycle', question: 'What review cycle should apply?', helper: 'The uploaded matrix says T4 Procedure / SOP is typically Semi-Annual; T5 is quarterly or upon system change.', type: 'single', optionsFrom: 'frequencyOptions' }
+];
