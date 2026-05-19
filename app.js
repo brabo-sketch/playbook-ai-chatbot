@@ -1298,3 +1298,350 @@ function suggestSteps(title, roles, inputs, outputs, systems) {
   ];
 }
 
+
+/* ------------------------------
+   v6 Natural AI Conversation Mode
+   Replaces the form-like question flow with a conversational interviewer.
+   Users can answer with keywords; the bot interprets, validates, and asks probes.
+-------------------------------- */
+const naturalState = {
+  initialized: false,
+  messages: JSON.parse(localStorage.getItem('playbookDocbotConversation') || '[]'),
+  selectedChips: []
+};
+
+function setupNaturalMode() {
+  if (naturalState.initialized) return;
+  naturalState.initialized = true;
+  const sendBtn = $('sendChatBtn');
+  const input = $('conversationInput');
+  if (sendBtn) sendBtn.onclick = sendNaturalAnswer;
+  if (input) {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendNaturalAnswer();
+      }
+    });
+  }
+  if ($('clarifyBtn')) $('clarifyBtn').onclick = explainCurrentQuestion;
+  if ($('skipBtn')) $('skipBtn').onclick = () => {
+    addMessage('user', 'Skip this for now.');
+    addMessage('ai', `Okay. I will mark **${getQuestion().section}** as TBD and we can validate it later before publishing.`);
+    state.answers[getQuestion().id] = qDefaultTbd(getQuestion());
+    advanceNatural();
+  };
+  if ($('backBtn')) $('backBtn').onclick = () => {
+    if (state.index > 0) {
+      state.index -= 1;
+      addMessage('system', `Moved back to: ${getQuestion().section}`);
+      askNaturalQuestion(true);
+    }
+  };
+  if ($('resetBtn')) $('resetBtn').onclick = () => {
+    if (confirm('Clear all captured information and conversation?')) {
+      state.answers = {}; state.index = 0; naturalState.messages = []; naturalState.selectedChips = [];
+      localStorage.removeItem('playbookDocbotConversation'); save(); render();
+    }
+  };
+}
+
+function render() {
+  setupNaturalMode();
+  const q = getQuestion();
+  if ($('stageLabel')) $('stageLabel').textContent = q.stage || 'AI Interview';
+  if ($('questionText')) $('questionText').textContent = 'Conversational capture';
+  if ($('questionHelper')) $('questionHelper').textContent = 'Answer with keywords, short phrases, or click suggestions. The chatbot will convert your answer into PLAYBOOK-ready documentation language.';
+  if ($('questionCounter')) $('questionCounter').textContent = `${state.index + 1} / ${PLAYBOOK_QUESTIONS.length}`;
+  renderMessages();
+  renderSuggestionChips(q);
+  renderSummary();
+  renderOutputs();
+  renderProgress();
+  if (!naturalState.messages.length) {
+    addMessage('ai', `Hi. I’ll interview the process owner like a documentation assistant, not a form. You can answer in keywords only. I’ll interpret the answer, validate it, and ask follow-up questions if something does not make sense.`);
+    askNaturalQuestion();
+  } else {
+    const last = naturalState.messages[naturalState.messages.length - 1];
+    if (last && last.role !== 'ai-question') askNaturalQuestion(true);
+  }
+}
+
+function addMessage(role, html) {
+  naturalState.messages.push({ role, html, at: new Date().toISOString() });
+  naturalState.messages = naturalState.messages.slice(-120);
+  localStorage.setItem('playbookDocbotConversation', JSON.stringify(naturalState.messages));
+  renderMessages();
+}
+
+function renderMessages() {
+  const box = $('chatMessages');
+  if (!box) return;
+  box.innerHTML = naturalState.messages.map(m => {
+    const roleClass = m.role === 'user' ? 'user' : (m.role === 'system' ? 'system' : 'ai');
+    return `<div class="message ${roleClass}">${m.html}</div>`;
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+function askNaturalQuestion(force = false) {
+  const q = getQuestion();
+  const last = naturalState.messages[naturalState.messages.length - 1];
+  const marker = `data-q="${q.id}"`;
+  if (!force && last && last.html && last.html.includes(marker)) return;
+  naturalState.selectedChips = [];
+  const probes = buildProbes(q);
+  const intro = `<span style="display:none" ${marker}></span><strong>${q.stage}: ${q.section}</strong>${naturalQuestionText(q)}${probes.length ? `<ul class="probe-list">${probes.map(p => `<li>${p}</li>`).join('')}</ul>` : ''}<small>${naturalAnswerHint(q)}</small>`;
+  naturalState.messages.push({ role: 'ai-question', html: intro, at: new Date().toISOString() });
+  localStorage.setItem('playbookDocbotConversation', JSON.stringify(naturalState.messages));
+  renderMessages();
+  renderSuggestionChips(q);
+}
+
+function naturalQuestionText(q) {
+  const title = state.answers.procedureTitle || 'this procedure';
+  switch (q.id) {
+    case 'processDomain': return 'Which business area owns this? Just type the function name.';
+    case 'linkedProcess': return 'What bigger process does this belong to? A rough name is enough.';
+    case 'parentPolicy': return 'What policy, rule, DOA, memo, contract, or standard governs this? Keywords are fine.';
+    case 'procedureTitle': return 'What activity are we documenting? Give me a working title or keywords.';
+    case 'documentOwner': return 'Who is accountable for keeping this document correct and updated? Use a role, not a person.';
+    case 'smes': return 'Who should I consult to make this accurate? List roles separated by comma.';
+    case 'purposeFreeText': return `Based on what you gave me, I can draft the purpose for **${title}**. Type “accept” if okay, or type corrections in keywords.`;
+    case 'scope': return 'What should this procedure cover? Select suggestions or type simple keywords.';
+    case 'outOfScope': return 'What should this procedure not cover, so we avoid duplicating policy, process, or work instructions?';
+    case 'triggerFreeText': return 'What exact event starts the work? One clear start point only.';
+    case 'endPoint': return 'When is the work truly done? One clear completion point only.';
+    case 'inputs': return 'What must be available before people can start? Forms, approvals, documents, system data, or request details.';
+    case 'outputs': return 'What does this procedure produce that another person or process will use?';
+    case 'criticalSteps': return 'Walk me through the work in rough sequence. Keywords are enough, like: request, check docs, review, approve, update SAP, notify.';
+    case 'decisionPoints': return 'Where does someone decide approve/reject/return/escalate/classify? Pick or type the decision keywords.';
+    case 'exceptions': return 'What can go wrong or require special handling? Incomplete docs, urgent request, approval delay, system issue, and similar items.';
+    case 'sla': return 'For each major activity, tell me the target timeline if known. You can type: completeness check = 2 days; approval = 5 days.';
+    case 'kpis': return 'How should management know if this procedure is working? I’ll suggest KPIs based on your answers.';
+    case 'relatedDocs': return 'What documents should this connect to? I’ll suggest likely policies, process docs, WIs, forms, records, and downstream procedures.';
+    default: return q.question || 'Tell me the key information for this section.';
+  }
+}
+
+function naturalAnswerHint(q) {
+  if (['single','smartSingle'].includes(q.type)) return 'Select one suggestion or type one short answer.';
+  if (['multi','smartMulti','tags'].includes(q.type)) return 'Select multiple suggestions or type keywords separated by comma.';
+  if (q.type === 'steps') return 'Use rough sequence only. The bot will turn it into numbered procedure steps.';
+  if (q.type === 'timelineMatrix') return 'Use item = timeline format, or type TBD if the SLA is not yet approved.';
+  if (q.type === 'generated') return 'Type accept, revise, or short corrections.';
+  return 'A short phrase is enough. No need to write a formal statement.';
+}
+
+function buildProbes(q) {
+  const probes = [];
+  if (q.id === 'scope') probes.push('What activity starts and ends inside this document?', 'Which roles actually perform the work?', 'What output must exist when this is done?');
+  if (q.id === 'inputs') probes.push('Can the work start without this item?', 'Is this input observable or only assumed?', 'Who provides it?');
+  if (q.id === 'outputs') probes.push('Who uses the output next?', 'Is it a record, decision, system update, approval, or notification?');
+  if (q.id === 'decisionPoints') probes.push('What is the basis or criteria?', 'Who has authority to decide?', 'What evidence proves the decision?');
+  if (q.id === 'exceptions') probes.push('Who can approve the exception?', 'What evidence must be retained?', 'When should it be escalated?');
+  if (q.id === 'sla') probes.push('Which activities create delay risk?', 'Which handoffs need aging monitoring?', 'What timeline is approved versus assumed?');
+  if (q.id === 'kpis') probes.push('Do we need to measure speed, quality, compliance, aging, exceptions, or evidence completeness?', 'Can the KPI be generated from a tracker, system, or SharePoint record?');
+  if (q.id === 'relatedDocs') probes.push('What upstream policy governs this?', 'What downstream process uses the output?', 'What T5 work instruction or form supports execution?');
+  return probes;
+}
+
+function renderSuggestionChips(q) {
+  const chipBox = $('suggestionChips');
+  if (!chipBox) return;
+  const opts = getNaturalOptions(q).slice(0, 14);
+  if (!opts.length) { chipBox.innerHTML = ''; return; }
+  chipBox.innerHTML = opts.map(o => `<button class="suggestion-chip ${naturalState.selectedChips.includes(o.value) ? 'selected' : ''}" data-value="${escapeHtml(o.value)}" title="${escapeHtml(o.impact || '')}">${escapeHtml(o.label || o.value)}</button>`).join('');
+  chipBox.querySelectorAll('.suggestion-chip').forEach(btn => {
+    btn.onclick = () => {
+      const val = btn.dataset.value;
+      if (['single','smartSingle'].includes(q.type)) {
+        naturalState.selectedChips = [val];
+        $('conversationInput').value = val;
+      } else {
+        const set = new Set(naturalState.selectedChips);
+        set.has(val) ? set.delete(val) : set.add(val);
+        naturalState.selectedChips = [...set];
+        $('conversationInput').value = naturalState.selectedChips.join(', ');
+      }
+      renderSuggestionChips(q);
+    };
+  });
+}
+
+function getNaturalOptions(q) {
+  if (q.type === 'generated') return [{ value: 'accept', label: 'Accept chatbot draft', impact: 'Uses the AI-drafted statement based on prior answers.' }, { value: 'revise', label: 'I need to revise', impact: 'Type corrections as keywords.' }];
+  if (q.type === 'steps') return suggestSteps(state.answers.procedureTitle || 'the procedure', arr('roles'), arr('inputs'), arr('outputs'), arr('systems')).map(s => ({ value: `${s.owner}: ${s.action}`, label: s.action.replace(/\.$/, ''), impact: `Owner: ${s.owner}` }));
+  if (q.type === 'timelineMatrix') return smartOptions('timelineItems').map(o => ({ value: `${o.item || o.value} = ${o.timeline || 'TBD'}`, label: `${o.item || o.value}: ${o.timeline || 'TBD'}`, impact: o.impact || '' }));
+  if (q.generator) return smartOptions(q.generator, q).map(normalizeOption);
+  return resolveOptions(q).map(normalizeOption);
+}
+
+function sendNaturalAnswer() {
+  const input = $('conversationInput');
+  const raw = (input?.value || '').trim();
+  const q = getQuestion();
+  if (!raw && naturalState.selectedChips.length) input.value = naturalState.selectedChips.join(', ');
+  const finalRaw = (input?.value || '').trim();
+  if (!finalRaw) { addMessage('system', 'Please type a keyword, short phrase, or select a suggestion before sending.'); return; }
+  addMessage('user', escapeHtml(finalRaw));
+  const interpreted = interpretNaturalAnswer(q, finalRaw);
+  const issue = validateNaturalAnswer(q, interpreted.value, finalRaw);
+  if (issue.blocking) {
+    addMessage('ai', `<strong>I need to clarify this before we move on.</strong>${issue.message}<small>Try answering with a more specific keyword or select one of the suggested choices.</small>`);
+    return;
+  }
+  state.answers[q.id] = interpreted.value;
+  rememberCurrentDocument();
+  save();
+  addMessage('ai', `<strong>Captured and interpreted.</strong>${interpreted.explanation}${issue.message ? `<small>${issue.message}</small>` : ''}`);
+  input.value = '';
+  naturalState.selectedChips = [];
+  advanceNatural();
+}
+
+function advanceNatural() {
+  if (state.index < PLAYBOOK_QUESTIONS.length - 1) state.index += 1;
+  renderSummary(); renderOutputs(); renderProgress();
+  askNaturalQuestion(true);
+  renderSuggestionChips(getQuestion());
+}
+
+function interpretNaturalAnswer(q, raw) {
+  const text = raw.trim();
+  const lower = text.toLowerCase();
+  const opts = getNaturalOptions(q);
+  let value;
+  if (q.type === 'generated') {
+    const draft = generateDraftFor(q);
+    value = /^(accept|ok|okay|yes|approved|looks good)$/i.test(text) ? draft : (/revise/i.test(text) ? draft : text);
+    return { value, explanation: `I will use this as the drafted statement for **${q.section}**.` };
+  }
+  if (['single','smartSingle'].includes(q.type)) {
+    const matched = bestOptionMatches(text, opts);
+    value = matched[0]?.value || text;
+    return { value, explanation: `I read this as: **${escapeHtml(labelFor(q, value))}**. This will set the single controlling answer for **${q.section}**.` };
+  }
+  if (['multi','smartMulti'].includes(q.type)) {
+    const parts = splitKeywords(text);
+    const matched = [];
+    parts.forEach(p => {
+      const m = bestOptionMatches(p, opts)[0];
+      if (m) matched.push(m.value); else matched.push(cleanKeyword(p));
+    });
+    value = [...new Set(matched.filter(Boolean))];
+    return { value, explanation: `I converted your keywords into ${value.length} selectable item(s): **${escapeHtml(value.join(', '))}**.` };
+  }
+  if (q.type === 'tags') {
+    value = splitKeywords(text).map(cleanKeyword).filter(Boolean);
+    return { value, explanation: `I captured these as role/tag entries: **${escapeHtml(value.join(', '))}**.` };
+  }
+  if (q.type === 'steps') {
+    value = parseSteps(text);
+    return { value, explanation: `I converted your rough sequence into ${value.length} numbered procedure step(s). You can refine the step wording later in the generated draft.` };
+  }
+  if (q.type === 'timelineMatrix') {
+    value = parseTimelineMatrix(text);
+    return { value, explanation: `I captured ${value.length} timeline/SLA item(s). Items marked TBD should be validated by the process owner.` };
+  }
+  value = text;
+  return { value, explanation: `I captured this as short-form input for **${q.section}** and will expand it into formal document wording where needed.` };
+}
+
+function bestOptionMatches(text, opts) {
+  const t = normalizeText(text);
+  return opts
+    .map(o => ({ ...o, score: optionScore(t, normalizeText(`${o.label || ''} ${o.value || ''}`)) }))
+    .filter(o => o.score > 0)
+    .sort((a,b) => b.score - a.score);
+}
+function optionScore(a,b) {
+  if (!a || !b) return 0;
+  if (b.includes(a) || a.includes(b)) return 100;
+  const aw = a.split(' ').filter(w => w.length > 2);
+  const bw = new Set(b.split(' ').filter(w => w.length > 2));
+  return aw.filter(w => bw.has(w)).length * 10;
+}
+function normalizeText(s) { return String(s).toLowerCase().replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim(); }
+function splitKeywords(s) { return String(s).split(/[;\n,]+|\s\+\s/).map(x => x.trim()).filter(Boolean); }
+function cleanKeyword(s) { return String(s).replace(/^[-•\d.)\s]+/,'').trim(); }
+
+function parseSteps(text) {
+  const parts = splitKeywords(text).map(cleanKeyword).filter(Boolean);
+  const roles = arr('roles');
+  const defaultOwner = state.answers.documentOwner || roles[0] || 'Process Owner';
+  return parts.map((p, i) => {
+    let owner = defaultOwner;
+    let action = p;
+    if (p.includes(':')) {
+      const [o, ...rest] = p.split(':'); owner = o.trim() || defaultOwner; action = rest.join(':').trim() || p;
+    } else if (/request|initiat|submit/i.test(p)) owner = roles.find(r => /request|initiator|proponent/i.test(r)) || 'Requestor / Initiator';
+    else if (/review|check|validat|assess/i.test(p)) owner = roles.find(r => /review|checker|finance|regulatory|evaluator/i.test(r)) || 'Reviewer / Evaluator';
+    else if (/approv|decid|endorse/i.test(p)) owner = roles.find(r => /approv|head|owner|manager/i.test(r)) || defaultOwner;
+    else if (/record|file|update|sap|system|master/i.test(p)) owner = roles.find(r => /custodian|admin|master|system|buyer/i.test(r)) || defaultOwner;
+    return { owner, action: action.charAt(0).toUpperCase() + action.slice(1) };
+  });
+}
+
+function parseTimelineMatrix(text) {
+  const rows = [];
+  const defaults = smartOptions('timelineItems').map(o => ({ item: o.item || o.value, timeline: o.timeline || 'TBD', owner: o.owner || state.answers.documentOwner || 'Process Owner', trigger: o.impact || '' }));
+  const parts = splitKeywords(text);
+  if (/^(tbd|unknown|not sure)$/i.test(text)) return defaults;
+  parts.forEach(p => {
+    const [left, ...rest] = p.split(/=|:/);
+    const item = cleanKeyword(left);
+    const timeline = cleanKeyword(rest.join(':')) || (p.match(/\b\d+\s*(day|days|hour|hours|week|weeks|working days)\b/i)?.[0] || 'TBD');
+    if (item) rows.push({ item, timeline, owner: state.answers.documentOwner || 'Process Owner', trigger: 'User-provided timeline/SLA' });
+  });
+  return rows.length ? rows : defaults;
+}
+
+function validateNaturalAnswer(q, value, raw) {
+  const msg = [];
+  let blocking = false;
+  if (!value || (Array.isArray(value) && !value.length)) {
+    return { blocking: true, message: 'I could not detect a usable answer.' };
+  }
+  if (['text'].includes(q.type) && String(value).length < 3) {
+    blocking = true; msg.push('That is too short to interpret reliably. Give me at least one specific keyword or role.');
+  }
+  if (q.id === 'documentOwner' && /jonald|francis|mardie|babet|lace|jerome|sandra/i.test(String(value))) {
+    msg.push('PLAYBOOK documents should normally use a role/function as owner, not a person name. I will keep this, but validate whether the role title should be used instead.');
+  }
+  if (q.id === 'triggerFreeText' && splitKeywords(raw).length > 1) {
+    blocking = true; msg.push('This looks like more than one start point. A procedure should have one clear start event. Pick the actual first event only.');
+  }
+  if (q.id === 'endPoint' && splitKeywords(raw).length > 1) {
+    blocking = true; msg.push('This looks like more than one endpoint. Pick the event that proves the procedure is complete.');
+  }
+  if (q.id === 'outputs' && arr('inputs').some(i => String(value).toLowerCase().includes(String(i).toLowerCase()))) {
+    msg.push('One of the outputs appears similar to an input. Check whether it is truly produced by the procedure, or merely received at the start.');
+  }
+  if (q.id === 'criticalSteps' && Array.isArray(value) && value.length < 3) {
+    msg.push('This may be too few steps for a useful T4 SOP. The draft can still proceed, but the process owner should validate whether intermediate review, approval, filing, or notification steps are missing.');
+  }
+  if (q.id === 'kpis' && Array.isArray(value) && value.some(v => /happy|good|nice|smooth/i.test(v))) {
+    blocking = true; msg.push('That sounds like a desired outcome, not a measurable KPI. Use measurable items like cycle time, aging, exception rate, completeness rate, or SLA compliance.');
+  }
+  if (q.id === 'relatedDocs') {
+    msg.push('These are proposed links only. Final interlinking should be validated once the related T2/T3/T4/T5 documents are available in the repository.');
+  }
+  return { blocking, message: msg.join(' ') };
+}
+
+function qDefaultTbd(q) {
+  if (['multi','smartMulti','tags'].includes(q.type)) return ['TBD'];
+  if (q.type === 'steps') return [{ owner: 'TBD', action: 'TBD' }];
+  if (q.type === 'timelineMatrix') return smartOptions('timelineItems').map(o => ({ item: o.item || o.value, timeline: 'TBD', owner: o.owner || 'TBD', trigger: o.impact || '' }));
+  return 'TBD';
+}
+
+function explainCurrentQuestion() {
+  const q = getQuestion();
+  addMessage('ai', `<strong>Why this matters:</strong>${escapeHtml(q.helper || 'This information is needed to produce a complete PLAYBOOK document and support SharePoint metadata, QA checks, routing, and future impact assessment.')}<small>Section mapped: ${escapeHtml(q.section || q.stage)}</small>`);
+}
+
+// Re-initialize v6 mode after all legacy functions are loaded.
+setupNaturalMode();
+render();

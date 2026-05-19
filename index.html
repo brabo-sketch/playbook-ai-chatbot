@@ -60,26 +60,37 @@
           </div>
         </div>
 
-        <div class="chat-layout">
-          <section class="chat-card">
-            <div class="chat-header">
+        <div class="chat-layout natural-layout">
+          <section class="chat-card natural-chat-card">
+            <div class="chat-header natural-chat-header">
               <div>
-                <span class="stage" id="stageLabel">Stage</span>
-                <h3 id="questionText">Question</h3>
-                <p id="questionHelper">Helper text</p>
+                <span class="stage" id="stageLabel">AI Interview</span>
+                <h3 id="questionText">Conversational capture</h3>
+                <p id="questionHelper">Answer in keywords or short phrases. The chatbot will interpret, validate, and ask follow-up questions when something is unclear.</p>
               </div>
               <span class="counter" id="questionCounter">1 / 1</span>
             </div>
-            <div id="answerArea"></div>
-            <div class="validation-box" id="validationBox">
+
+            <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+            <div id="suggestionChips" class="suggestion-chips"></div>
+
+            <div class="natural-input-bar">
+              <textarea id="conversationInput" class="conversation-input" placeholder="Type a short answer, e.g., Purchasing, Vendor accreditation, SAP, email approval..."></textarea>
+              <button class="primary" id="sendChatBtn">Send</button>
+            </div>
+
+            <div class="chat-actions natural-actions">
+              <button class="ghost" id="backBtn">Back</button>
+              <button class="secondary" id="skipBtn">Skip / ask later</button>
+              <button class="secondary" id="clarifyBtn">Why are you asking?</button>
+            </div>
+
+            <div id="answerArea" class="visually-hidden"></div>
+            <div class="validation-box visually-hidden" id="validationBox">
               <h4>Validation and documentation impact</h4>
               <p id="validationText">Your answer will be validated here.</p>
             </div>
-            <div class="chat-actions">
-              <button class="ghost" id="backBtn">Back</button>
-              <button class="secondary" id="skipBtn">Skip for now</button>
-              <button class="primary" id="confirmBtn">Confirm and continue</button>
-            </div>
+            <button id="confirmBtn" class="visually-hidden">Confirm and continue</button>
           </section>
 
           <aside class="answer-summary">

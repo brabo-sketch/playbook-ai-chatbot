@@ -35,3 +35,114 @@
 .timeline-fields { display: grid; gap: 7px; }
 .timeline-fields label { font-size: 12px; font-weight: 700; color: #6f4f3a; }
 .timeline-fields small { color: #7b6b5f; line-height: 1.35; }
+
+/* v6 Natural AI Conversation Mode */
+.natural-layout {
+  align-items: stretch;
+}
+.natural-chat-card {
+  min-height: 720px;
+  display: flex;
+  flex-direction: column;
+}
+.natural-chat-header {
+  border-bottom: 1px solid rgba(0,0,0,.08);
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+}
+.chat-messages {
+  background: #fbf7ef;
+  border: 1px solid rgba(99, 52, 34, .14);
+  border-radius: 22px;
+  padding: 18px;
+  min-height: 410px;
+  max-height: 560px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.message {
+  max-width: 86%;
+  border-radius: 18px;
+  padding: 12px 14px;
+  line-height: 1.45;
+  box-shadow: 0 8px 20px rgba(48, 28, 18, .06);
+}
+.message.ai {
+  align-self: flex-start;
+  background: #fff;
+  border: 1px solid rgba(139, 30, 42, .12);
+}
+.message.user {
+  align-self: flex-end;
+  background: #8b1e2a;
+  color: #fff;
+}
+.message.system {
+  align-self: center;
+  background: #fff8e3;
+  border: 1px solid rgba(164, 120, 25, .22);
+  max-width: 94%;
+  font-size: .92rem;
+}
+.message strong {
+  display: block;
+  margin-bottom: 4px;
+}
+.message small {
+  display: block;
+  opacity: .78;
+  margin-top: 6px;
+}
+.suggestion-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+.suggestion-chip {
+  border: 1px solid rgba(139, 30, 42, .24);
+  background: #fff;
+  border-radius: 999px;
+  padding: 8px 11px;
+  cursor: pointer;
+  font-size: .9rem;
+  transition: .15s ease;
+}
+.suggestion-chip:hover,
+.suggestion-chip.selected {
+  background: #8b1e2a;
+  color: #fff;
+}
+.natural-input-bar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+.conversation-input {
+  width: 100%;
+  min-height: 58px;
+  max-height: 140px;
+  resize: vertical;
+  border-radius: 16px;
+  border: 1px solid rgba(99, 52, 34, .22);
+  padding: 13px 14px;
+  font-family: inherit;
+}
+.natural-actions {
+  margin-top: 12px;
+}
+.visually-hidden {
+  display: none !important;
+}
+.probe-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.probe-list li { margin: 3px 0; }
+@media (max-width: 900px) {
+  .natural-input-bar { grid-template-columns: 1fr; }
+  .message { max-width: 96%; }
+}

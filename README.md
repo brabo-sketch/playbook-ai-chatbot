@@ -1,4 +1,4 @@
-# Project PLAYBOOK AI Documentation Chatbot
+# Project PLAYBOOK AI Documentation Chatbot v6
 
 This is a GitHub-ready static prototype for a Project PLAYBOOK documentation assistant.
 
@@ -169,3 +169,18 @@ This version adds smarter handling for later-stage questions where users usually
 - KPI suggestions are now logic-based. The bot proposes cycle time, SLA compliance, aging, exception, completeness, and evidence KPIs based on the procedure steps, outputs, risks, exceptions, and timelines already captured.
 - Related documents are treated as proposed links, not final answers. The bot suggests parent process, governing policy, T5 work instructions, forms, system guides, downstream procedures, and prior locally saved captures in the same browser. Final interlinking should be validated when the PLAYBOOK repository has more completed documents.
 - The chatbot saves a lightweight local history of document titles in the browser to improve related-document suggestions. This does not send data to a server.
+
+
+## v6 Natural Conversation Mode
+
+This version changes the capture experience from a form-like questionnaire into a natural AI-style interview. Users can answer with keywords or short phrases. The chatbot will:
+
+- ask probing questions instead of asking users to write complete formal statements;
+- interpret keyword answers into structured PLAYBOOK fields;
+- suggest context-aware choices based on prior answers;
+- validate logic after every answer and ask for clarification when the answer is irregular;
+- convert rough sequences into numbered procedure steps;
+- suggest timelines, KPIs, related documents, risks, controls, evidence, and approvals;
+- keep final unknowns as TBD instead of forcing users to guess.
+
+The prototype still runs as a static GitHub Pages site. It simulates AI behavior through rule-based logic and optional local AI draft improvement. Do not place API keys in public GitHub files.
