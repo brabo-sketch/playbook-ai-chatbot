@@ -182,7 +182,7 @@ function a(id, fallback = 'TBD') {
   const v = state.answers[id];
   if (Array.isArray(v)) {
     if (!v.length) return fallback;
-    if (v[0] && typeof v[0] === 'object') return v.map((x, i) => `${i + 1}. ${x.owner || 'Owner TBD'} - ${x.action || 'Step TBD'}`).join('; ');
+    if (v[0] && typeof v[0] === 'object') return v.map((x, i) => `${i + 1}. ${x.action || x.item || 'Item TBD'} (${x.owner || 'Owner TBD'}${x.timeline ? ', ' + x.timeline : ''})`).join('; ');
     return v.map(x => labelFor(qById(id), x)).join(', ');
   }
   return v ? labelFor(qById(id), v) : fallback;
@@ -416,7 +416,9 @@ Before converting this roll-up into the official T3 Process Document, validate t
 function confirmAnswer() {
   const q = getQuestion();
   if (q.type === 'steps') state.tempValue = (state.tempValue || []).filter(s => s.action || s.owner);
+  if (q.type === 'timelineMatrix') state.tempValue = (state.tempValue || []).filter(r => r.item || r.timeline || r.owner);
   state.answers[q.id] = state.tempValue;
+  rememberCurrentDocument();
   save();
   if (state.index < PLAYBOOK_QUESTIONS.length - 1) state.index += 1;
   render();
@@ -532,3 +534,767 @@ function initEvents() {
 }
 
 initEvents(); render();
+
+
+/* ------------------------------
+   v4 Dynamic Guidance Overrides
+   These overrides make the chatbot behave like an AI-guided interviewer:
+   - draft purpose statement from earlier answers
+   - suggest selectable answers from prior responses
+   - validate logic after every answer
+   - allow custom input when suggested choices are incomplete
+-------------------------------- */
+
+function isChoiceType(q) {
+  return ['single', 'multi', 'smartSingle', 'smartMulti'].includes(q.type);
+}
+
+function isArrayType(q) {
+  return ['multi', 'tags', 'steps', 'smartMulti', 'timelineMatrix'].includes(q.type);
+}
+
+function render() {
+  const q = getQuestion();
+  $('stageLabel').textContent = q.stage;
+  $('questionText').textContent = q.question;
+  $('questionHelper').textContent = buildSmartHelper(q);
+  $('questionCounter').textContent = `${state.index + 1} / ${PLAYBOOK_QUESTIONS.length}`;
+
+  if (state.answers[q.id] !== undefined) {
+    state.tempValue = state.answers[q.id];
+  } else if (q.type === 'generated') {
+    state.tempValue = generateDraftFor(q);
+  } else if (isArrayType(q)) {
+    state.tempValue = [];
+  } else {
+    state.tempValue = '';
+  }
+
+  renderAnswerArea(q);
+  renderValidation(q);
+  renderSummary();
+  renderOutputs();
+  renderProgress();
+}
+
+function buildSmartHelper(q) {
+  let helper = q.helper || '';
+  const downstream = inferDownstreamContext();
+  if (q.id === 'outputs') {
+    helper += `\n\nDownstream context: The likely next user of this procedure output is ${downstream.customer}. The output should therefore be something that ${downstream.customer} can actually use, verify, store, or act on.`;
+  }
+  if (q.type === 'smartSingle') helper += '\n\nSelection rule: Select one answer only.';
+  if (q.type === 'smartMulti') helper += '\n\nSelection rule: You may select multiple answers. Use the additional textbox only when the choices are incomplete.';
+  return helper;
+}
+
+function resolveOptions(q) {
+  if (!q) return [];
+  if (q.generator) return smartOptions(q.generator, q).map(normalizeOption);
+  if (q.optionsFrom) return PLAYBOOK_SCHEMA[q.optionsFrom].map(v => ({ value: v, label: v, impact: `${v} will be reflected in the relevant PLAYBOOK section.` }));
+  return (q.options || []).map(normalizeOption);
+}
+
+function normalizeOption(opt) {
+  if (typeof opt === 'string') return { value: opt, label: opt, impact: 'This will be used as structured document content.' };
+  return { value: opt.value ?? opt.label, label: opt.label ?? opt.value, impact: opt.impact || 'This will be used as structured document content.' };
+}
+
+function renderAnswerArea(q) {
+  const area = $('answerArea');
+  area.className = 'answer-area';
+  area.innerHTML = '';
+
+  if (q.type === 'generated') {
+    const draft = generateDraftFor(q);
+    const box = document.createElement('div');
+    box.className = 'smart-context';
+    box.innerHTML = `<strong>Chatbot draft based on your prior answers</strong><p>${escapeHtml(draft)}</p><small>You can accept this as-is, or edit it below.</small>`;
+    area.appendChild(box);
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'form-control';
+    textarea.value = state.tempValue || draft;
+    textarea.oninput = () => { state.tempValue = textarea.value; renderValidation(q); };
+    area.appendChild(textarea);
+
+    const btn = document.createElement('button');
+    btn.className = 'secondary';
+    btn.textContent = 'Regenerate from prior answers';
+    btn.onclick = () => { state.tempValue = generateDraftFor(q); renderAnswerArea(q); renderValidation(q); };
+    area.appendChild(btn);
+    return;
+  }
+
+  if (isChoiceType(q)) {
+    const options = resolveOptions(q);
+    const grid = document.createElement('div');
+    grid.className = 'suggestion-grid';
+    options.forEach(opt => {
+      const current = q.type === 'smartMulti' || q.type === 'multi' ? (state.tempValue || []).includes(opt.value) : state.tempValue === opt.value;
+      const card = document.createElement('label');
+      card.className = `option-card ${current ? 'selected' : ''}`;
+      card.innerHTML = `<input type="${(q.type === 'smartMulti' || q.type === 'multi') ? 'checkbox' : 'radio'}" ${current ? 'checked' : ''}/><div><strong>${escapeHtml(opt.label)}</strong><small>${escapeHtml(opt.impact || '')}</small></div>`;
+      card.onclick = (e) => {
+        e.preventDefault();
+        if (q.type === 'smartMulti' || q.type === 'multi') {
+          const set = new Set(state.tempValue || []);
+          set.has(opt.value) ? set.delete(opt.value) : set.add(opt.value);
+          state.tempValue = [...set];
+        } else {
+          state.tempValue = opt.value;
+        }
+        renderAnswerArea(q); renderValidation(q);
+      };
+      grid.appendChild(card);
+    });
+    area.appendChild(grid);
+
+    if (q.allowCustom) renderCustomChoiceInput(area, q);
+    return;
+  }
+
+  if (q.type === 'text') {
+    const suggestions = smartTextSuggestions(q.id);
+    if (suggestions.length) {
+      const panel = document.createElement('div');
+      panel.className = 'smart-context';
+      panel.innerHTML = `<strong>Suggested wording starters</strong><p>Click one to use it, then edit only what is not accurate.</p>`;
+      area.appendChild(panel);
+      const grid = document.createElement('div');
+      grid.className = 'suggestion-grid';
+      suggestions.forEach(s => {
+        const btn = document.createElement('button');
+        btn.className = 'option-card text-option';
+        btn.innerHTML = `<div><strong>${escapeHtml(s.label)}</strong><small>${escapeHtml(s.impact || 'Suggested from the information already captured.')}</small></div>`;
+        btn.onclick = () => { state.tempValue = s.value; renderAnswerArea(q); renderValidation(q); };
+        grid.appendChild(btn);
+      });
+      area.appendChild(grid);
+    }
+    const textarea = document.createElement('textarea');
+    textarea.className = 'form-control';
+    textarea.placeholder = q.placeholder || 'Short keywords are okay. The chatbot will expand them in the draft.';
+    textarea.value = state.tempValue || '';
+    textarea.oninput = () => { state.tempValue = textarea.value; renderValidation(q); };
+    area.appendChild(textarea);
+    return;
+  }
+
+  if (q.type === 'tags') {
+    const smart = smartOptions(q.id, q);
+    if (smart.length) {
+      q.allowCustom = true;
+      const tempType = q.type;
+      q.type = 'smartMulti';
+      renderAnswerArea(q);
+      q.type = tempType;
+      return;
+    }
+    renderTagInput(area, q);
+    return;
+  }
+
+  if (q.type === 'timelineMatrix') {
+    renderTimelineMatrix(area, q);
+    return;
+  }
+
+  if (q.type === 'steps') {
+    renderSmartSteps(area, q);
+  }
+}
+
+function renderCustomChoiceInput(area, q) {
+  const custom = document.createElement('div');
+  custom.className = 'custom-box';
+  custom.innerHTML = `<label>${escapeHtml(q.customLabel || 'Add other answer')}</label><div class="custom-row"><input class="form-control" placeholder="Type missing answer here"/><button class="secondary">Add</button></div>`;
+  const input = custom.querySelector('input');
+  const button = custom.querySelector('button');
+  button.onclick = () => {
+    const v = input.value.trim();
+    if (!v) return;
+    if (q.type === 'smartSingle') {
+      state.tempValue = v;
+    } else {
+      state.tempValue = [...new Set([...(state.tempValue || []), v])];
+    }
+    input.value = '';
+    renderAnswerArea(q); renderValidation(q);
+  };
+  input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); button.click(); } };
+  area.appendChild(custom);
+
+  if (Array.isArray(state.tempValue) && state.tempValue.length) {
+    const row = document.createElement('div');
+    row.className = 'tag-row';
+    state.tempValue.forEach(tag => {
+      const pill = document.createElement('span');
+      pill.className = 'tag';
+      pill.innerHTML = `${escapeHtml(labelFor(q, tag))}<button title="Remove">×</button>`;
+      pill.querySelector('button').onclick = () => { state.tempValue = state.tempValue.filter(x => x !== tag); renderAnswerArea(q); renderValidation(q); };
+      row.appendChild(pill);
+    });
+    area.appendChild(row);
+  }
+}
+
+function renderTagInput(area, q) {
+  const input = document.createElement('input');
+  input.className = 'form-control';
+  input.placeholder = q.placeholder || 'Type a short keyword and press Enter';
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter' && input.value.trim()) {
+      e.preventDefault();
+      state.tempValue = [...new Set([...(state.tempValue || []), input.value.trim()])];
+      input.value = '';
+      renderAnswerArea(q); renderValidation(q);
+    }
+  };
+  area.appendChild(input);
+  const row = document.createElement('div'); row.className = 'tag-row';
+  (state.tempValue || []).forEach(tag => {
+    const pill = document.createElement('span'); pill.className = 'tag';
+    pill.innerHTML = `${escapeHtml(tag)}<button title="Remove">×</button>`;
+    pill.querySelector('button').onclick = () => { state.tempValue = state.tempValue.filter(x => x !== tag); renderAnswerArea(q); renderValidation(q); };
+    row.appendChild(pill);
+  });
+  area.appendChild(row);
+}
+
+
+function renderTimelineMatrix(area, q) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'timeline-list';
+  const suggested = smartOptions('timelineItems').map(x => ({
+    item: x.item || x.value,
+    timeline: x.timeline || '',
+    owner: x.owner || state.answers.documentOwner || 'Process Owner',
+    trigger: x.trigger || x.impact || ''
+  }));
+  const rows = state.tempValue && state.tempValue.length ? state.tempValue : suggested;
+  state.tempValue = rows.length ? rows : [{ item: '', timeline: '', owner: '', trigger: '' }];
+
+  const note = document.createElement('div');
+  note.className = 'smart-context';
+  note.innerHTML = '<strong>Timeline/SLA builder</strong><p>The bot listed the activities that normally need timing rules. Fill in the approved target if known. Use TBD for items that need process owner confirmation.</p>';
+  area.appendChild(note);
+
+  state.tempValue.forEach((row, idx) => {
+    const div = document.createElement('div');
+    div.className = 'timeline-row';
+    div.innerHTML = `
+      <div class="timeline-index">${idx + 1}</div>
+      <div class="timeline-fields">
+        <label>Activity needing timeline/SLA</label>
+        <input class="form-control" value="${escapeHtml(row.item || '')}" placeholder="Example: Completeness check" />
+        <label>Timeline / SLA target</label>
+        <input class="form-control" value="${escapeHtml(row.timeline || '')}" placeholder="Example: Within 2 business days, or TBD" />
+        <label>Owner / escalation point</label>
+        <input class="form-control" value="${escapeHtml(row.owner || '')}" placeholder="Example: Purchasing Head" />
+        <small>${escapeHtml(row.trigger || 'This item was suggested based on your procedure flow.')}</small>
+      </div>
+      <button class="ghost" title="Remove">×</button>`;
+    div.querySelectorAll('input')[0].oninput = e => { state.tempValue[idx].item = e.target.value; renderValidation(q); };
+    div.querySelectorAll('input')[1].oninput = e => { state.tempValue[idx].timeline = e.target.value; renderValidation(q); };
+    div.querySelectorAll('input')[2].oninput = e => { state.tempValue[idx].owner = e.target.value; renderValidation(q); };
+    div.querySelector('button').onclick = () => { state.tempValue.splice(idx, 1); renderAnswerArea(q); renderValidation(q); };
+    wrapper.appendChild(div);
+  });
+  const add = document.createElement('button');
+  add.className = 'secondary';
+  add.textContent = 'Add another timeline/SLA item';
+  add.onclick = () => { state.tempValue.push({ item: '', timeline: '', owner: '', trigger: '' }); renderAnswerArea(q); };
+  area.appendChild(wrapper);
+  area.appendChild(add);
+}
+
+function renderSmartSteps(area, q) {
+  const wrapper = document.createElement('div'); wrapper.className = 'step-list';
+  const suggested = smartOptions('criticalSteps').map(x => ({ owner: x.owner, action: x.action }));
+  const steps = state.tempValue && state.tempValue.length ? state.tempValue : suggested.slice(0, 5);
+  state.tempValue = steps.length ? steps : [{ action: '', owner: '' }];
+
+  const note = document.createElement('div');
+  note.className = 'smart-context';
+  note.innerHTML = '<strong>Suggested starter flow</strong><p>The bot created a starter flow from your trigger, inputs, roles, outputs, and endpoint. Edit the activity and owner as needed.</p>';
+  area.appendChild(note);
+
+  state.tempValue.forEach((step, idx) => {
+    const row = document.createElement('div'); row.className = 'step-row';
+    row.innerHTML = `<span>${idx + 1}</span><input class="mini" placeholder="Activity / step" value="${escapeHtml(step.action || '')}"/><input class="mini" placeholder="Responsible role" value="${escapeHtml(step.owner || '')}"/><button class="ghost" title="Remove">×</button>`;
+    row.children[1].oninput = (e) => { state.tempValue[idx].action = e.target.value; renderValidation(q); };
+    row.children[2].oninput = (e) => { state.tempValue[idx].owner = e.target.value; renderValidation(q); };
+    row.children[3].onclick = () => { state.tempValue.splice(idx, 1); renderAnswerArea(q); renderValidation(q); };
+    wrapper.appendChild(row);
+  });
+  const add = document.createElement('button'); add.className = 'secondary'; add.textContent = 'Add another step';
+  add.onclick = () => { state.tempValue.push({ action: '', owner: '' }); renderAnswerArea(q); };
+  area.appendChild(wrapper); area.appendChild(add);
+}
+
+function renderValidation(q) {
+  const result = validateAnswer(q, state.tempValue);
+  const icon = result.level === 'error' ? 'Needs clarification' : result.level === 'warning' ? 'Check logic' : 'Looks logical';
+  $('validationText').innerHTML = `<strong>${icon}:</strong> ${escapeHtml(result.message)}${result.details?.length ? '<ul>' + result.details.map(d => `<li>${escapeHtml(d)}</li>`).join('') + '</ul>' : ''}`;
+  $('validationBox').className = `validation-box ${result.level || 'ok'}`;
+}
+
+function validateAnswer(q, val) {
+  const details = [];
+  let level = 'ok';
+
+  const empty = val === undefined || val === '' || (Array.isArray(val) && val.length === 0) || (q.type === 'steps' && (!val || val.every(s => !s.action && !s.owner)));
+  if (empty) return { level: 'warning', message: 'No answer yet. Choose from the suggested options or add a short keyword if the choices are incomplete.', details };
+
+  if (q.type === 'smartSingle') {
+    if (Array.isArray(val) && val.length > 1) return { level: 'error', message: 'This question requires one answer only. A procedure needs one clear start or endpoint to avoid confusion.', details };
+    details.push('This will be written as a single boundary statement in the procedure.');
+  }
+
+  if (q.type === 'smartMulti' || q.type === 'multi') {
+    details.push(`You selected ${Array.isArray(val) ? val.length : 1} item(s). These will become structured entries in the relevant PLAYBOOK section.`);
+  }
+
+  if (q.id === 'purposeFreeText') {
+    if (String(val).length < 60) {
+      level = 'warning';
+      details.push('The purpose statement is short. It may still be okay if the title and scope are clear, but the final draft may need richer context.');
+    }
+    details.push('This purpose was drafted from prior answers, so the user does not need to write a full formal statement.');
+  }
+
+  if (q.id === 'triggerFreeText') {
+    const trigger = arr('trigger').join(' ').toLowerCase();
+    const start = String(val).toLowerCase();
+    if (trigger.includes('scheduled') && !/(scheduled|cycle|periodic|calendar|monthly|weekly|daily|annual)/.test(start)) {
+      level = 'warning';
+      details.push('You selected a scheduled trigger earlier, but this start point does not mention a schedule or cycle.');
+    }
+    if (trigger.includes('system') && !/(system|workflow|sap|portal|tool|transaction)/.test(start)) {
+      level = 'warning';
+      details.push('You selected a system-workflow trigger earlier, but this start point does not mention a system, workflow, or transaction.');
+    }
+  }
+
+  if (q.id === 'endPoint') {
+    const outputs = arr('outputs').join(' ').toLowerCase();
+    const endpoint = String(val).toLowerCase();
+    if (outputs && !tokenOverlap(outputs, endpoint)) {
+      level = 'warning';
+      details.push('The endpoint does not appear to match the outputs already captured. Check whether the procedure truly ends at this point.');
+    }
+    details.push('The endpoint should create clear closure evidence and a handoff to the next process.');
+  }
+
+  if (q.id === 'outputs') {
+    const downstream = inferDownstreamContext();
+    details.push(`Downstream implication: ${downstream.customer} will likely use these outputs for ${downstream.use}.`);
+    if (arr('inputs').some(x => arr('outputs').includes(x))) {
+      level = 'warning';
+      details.push('One or more outputs match the inputs. That can be valid, but usually a procedure transforms inputs into a new record, approval, decision, or updated status.');
+    }
+  }
+
+  if (q.id === 'decisionPoints') {
+    const selected = arrFromValue(val).join(' ').toLowerCase();
+    if (!/(approve|reject|complete|valid|exception|threshold|condition|eligible|proceed|not proceed|risk)/.test(selected)) {
+      level = 'warning';
+      details.push('Decision points should normally have a criterion, authority, and evidence. Your selected items may need clearer decision wording.');
+    }
+    details.push('Each selected decision point will become a candidate control and approval requirement.');
+  }
+
+  if (q.id === 'exceptions') {
+    const selected = arrFromValue(val).join(' ').toLowerCase();
+    if (!/(escalat|approve|return|reject|hold|log|expiry|condition|evidence|owner|manager|head)/.test(selected)) {
+      level = 'warning';
+      details.push('Exception handling should define what happens next, who has authority, and what evidence is kept.');
+    }
+  }
+
+  if (q.id === 'sla') {
+    const rows = Array.isArray(val) ? val : [];
+    const missingItem = rows.filter(r => !r.item).length;
+    const missingTimeline = rows.filter(r => r.item && !r.timeline).length;
+    if (missingItem) {
+      level = 'warning';
+      details.push('Some timeline rows do not identify the activity being measured.');
+    }
+    if (missingTimeline) {
+      level = 'warning';
+      details.push('Some activities do not have a timeline. Use TBD when the approved target is not yet known.');
+    }
+    details.push('Each timeline item should eventually have: activity, target timeline, owner/escalation point, and start/end basis.');
+  }
+
+  if (q.id === 'kpis') {
+    const selected = arrFromValue(val).join(' ').toLowerCase();
+    if (!/(cycle|sla|aging|pending|complete|exception|evidence|accuracy|rate|timeliness|rework)/.test(selected)) {
+      level = 'warning';
+      details.push('A KPI should measure time, quality, completeness, aging, exception control, or output accuracy. Check whether the selected item is truly measurable.');
+    }
+    details.push('Selected KPIs will be treated as management monitoring candidates, not final approved scorecard metrics.');
+  }
+
+  if (q.id === 'relatedDocs') {
+    details.push('These are proposed links. Final interlinking should be validated after related procedures/processes are documented in the repository.');
+    if (arrFromValue(val).some(x => /downstream procedure using/i.test(x))) {
+      level = 'warning';
+      details.push('One selected link is a placeholder for a downstream procedure. Replace it with the exact document title once available.');
+    }
+  }
+
+  if (q.id === 'controls') {
+    const risks = arr('risks');
+    if (risks.length && !arrFromValue(val).length) {
+      level = 'error';
+      details.push('Risks were selected earlier, so at least one control type should be selected.');
+    }
+  }
+
+  if (q.id === 'evidence') {
+    if (arr('controls').length && !arrFromValue(val).length) {
+      level = 'error';
+      details.push('Controls need evidence. Select records that prove the control was performed.');
+    }
+  }
+
+  if (q.type === 'steps') {
+    const incomplete = (val || []).filter(s => !s.action || !s.owner);
+    if (incomplete.length) {
+      level = 'warning';
+      details.push('Some steps are missing either an activity or responsible role.');
+    }
+    if ((val || []).length < 3) {
+      level = 'warning';
+      details.push('Most T4 procedures need at least start, perform/review, and close steps.');
+    }
+  }
+
+  if (level === 'ok' && !details.length) details.push('The answer is usable and will be mapped to the correct section of the PLAYBOOK output.');
+  return { level, message: q.type === 'generated' ? 'The chatbot drafted this from prior answers. Review only for factual accuracy.' : 'The response is consistent enough to proceed.', details };
+}
+
+function confirmAnswer() {
+  const q = getQuestion();
+  if (q.type === 'steps') state.tempValue = (state.tempValue || []).filter(s => s.action || s.owner);
+  if (q.type === 'timelineMatrix') state.tempValue = (state.tempValue || []).filter(r => r.item || r.timeline || r.owner);
+  const result = validateAnswer(q, state.tempValue);
+  if (result.level === 'error') {
+    showToast('Please resolve the logic issue before continuing.');
+    renderValidation(q);
+    return;
+  }
+  state.answers[q.id] = state.tempValue;
+  rememberCurrentDocument();
+  save();
+  if (state.index < PLAYBOOK_QUESTIONS.length - 1) state.index += 1;
+  render();
+}
+
+function formatAnswer(q, val) {
+  if (q.type === 'steps') return val.map((s, i) => `${i + 1}. ${s.action || 'Step'} (${s.owner || 'Owner TBD'})`).join('<br/>');
+  if (q.type === 'timelineMatrix') return val.map((r, i) => `${i + 1}. ${r.item || 'Timeline item'} - ${r.timeline || 'TBD'} (${r.owner || 'Owner TBD'})`).join('<br/>');
+  if (Array.isArray(val)) return val.map(x => labelFor(q, x)).join(', ');
+  const opt = resolveOptions(q).find(o => o.value === val);
+  return opt ? opt.label : String(val);
+}
+
+function labelFor(q, val) {
+  if (val && typeof val === 'object') {
+    if (val.item || val.timeline) return `${val.item || 'Timeline item'} - ${val.timeline || 'TBD'} (${val.owner || 'Owner TBD'})`;
+    return JSON.stringify(val);
+  }
+  const opt = resolveOptions(q).find(o => o.value === val);
+  return opt ? opt.label : String(val);
+}
+
+function a(id, fallback = 'TBD') {
+  const v = state.answers[id];
+  if (Array.isArray(v)) {
+    if (!v.length) return fallback;
+    if (v[0] && typeof v[0] === 'object') return v.map((x, i) => `${i + 1}. ${x.action || x.item || 'Item TBD'} (${x.owner || 'Owner TBD'}${x.timeline ? ', ' + x.timeline : ''})`).join('; ');
+    return v.map(x => labelFor(qById(id), x)).join(', ');
+  }
+  return v ? labelFor(qById(id), v) : fallback;
+}
+
+function arr(id) {
+  const v = state.answers[id];
+  return arrFromValue(v);
+}
+
+function arrFromValue(v) {
+  if (!v) return [];
+  if (Array.isArray(v)) return v.map(x => typeof x === 'string' ? x : (x.action || x.owner || JSON.stringify(x))).filter(Boolean);
+  return [String(v)];
+}
+
+function tokenOverlap(a, b) {
+  const stop = new Set(['the','and','or','of','to','in','is','are','a','an','for','with','by','after','before','this','that','procedure','process']);
+  const aw = new Set(String(a).split(/\W+/).map(x => x.toLowerCase()).filter(x => x.length > 3 && !stop.has(x)));
+  const bw = String(b).split(/\W+/).map(x => x.toLowerCase()).filter(x => x.length > 3 && !stop.has(x));
+  return bw.some(x => aw.has(x));
+}
+
+function compactText(v, fallback = 'TBD') {
+  if (Array.isArray(v)) return v.join(', ');
+  return v || fallback;
+}
+
+function generateDraftFor(q) {
+  if (q.generator === 'purposeStatement') {
+    const title = state.answers.procedureTitle || 'this Procedure / SOP';
+    const domain = state.answers.processDomain || 'the applicable process domain';
+    const linked = state.answers.linkedProcess || 'the related T3 process';
+    const owner = state.answers.documentOwner || 'the accountable process owner';
+    const policy = state.answers.parentPolicy || 'applicable governing policy and rules';
+    const themes = arr('purpose').join(', ') || 'consistent execution, accountability, control, and documentation discipline';
+    const trigger = state.answers.triggerFreeText || labelFor(qById('trigger'), arr('trigger')[0] || '') || 'the defined trigger occurs';
+    return `${title} exists to define the standard method for performing the procedure within ${domain}, aligned with ${linked} and ${policy}. It clarifies when the procedure starts, who is responsible, what information and evidence are required, which decisions or controls must be performed, and when the activity is considered complete. The procedure supports ${themes.toLowerCase()} and helps ${owner} maintain consistent execution, traceable records, and controlled handoffs to downstream users.`;
+  }
+  return '';
+}
+
+function smartTextSuggestions(id) {
+  return smartOptions(id).map(normalizeOption);
+}
+
+function smartOptions(generator, q = {}) {
+  const title = state.answers.procedureTitle || 'the procedure';
+  const domain = state.answers.processDomain || 'the process domain';
+  const linked = state.answers.linkedProcess || 'the linked process';
+  const owner = state.answers.documentOwner || 'Process Owner';
+  const policy = state.answers.parentPolicy || 'governing policy';
+  const roles = [...new Set([...arr('roles'), owner, ...arr('smes')].filter(Boolean))];
+  const inputs = arr('inputs');
+  const outputs = arr('outputs');
+  const systems = arr('systems');
+  const records = arr('records');
+  const risks = arr('risks');
+  const controls = arr('controls');
+  const priorDocs = getPriorDocumentSuggestions();
+
+  const baseRoleOptions = ['Requestor', 'Process Owner', 'Reviewer / Evaluator', 'Approver', 'Records Custodian', 'System Owner / IT Support'];
+  const genericInputOptions = ['Approved request or business need', 'Required supporting documents', 'Applicable policy or authority reference', 'Complete data fields or form', 'Prior approval or endorsement', 'System-generated request or transaction'];
+  const genericOutputOptions = ['Approved request or decision record', 'Updated system record', 'Completed checklist or validation result', 'Notification to downstream user', 'Filed evidence in official repository', 'Exception or rejection notice'];
+  const genericRecords = ['Request form', 'Checklist', 'Approval record', 'Email endorsement', 'Exception log', 'SharePoint repository record', 'System transaction log'];
+  const genericSystems = ['SharePoint repository', 'Email / Outlook', 'Microsoft Teams', 'SAP', 'Excel tracker', 'Power Automate workflow'];
+
+  switch (generator) {
+    case 'processDomain':
+      return ['Procurement', 'Finance', 'Human Capital', 'Store Operations', 'Logistics', 'Merchandising', 'IT', 'Legal', 'Sales Operations'];
+    case 'linkedProcess':
+      return [
+        `${domain} Management Process`,
+        `${title.replace(/procedure|sop/ig, '').trim()} Process`,
+        `${domain} Request-to-Closure Process`,
+        `${domain} Governance and Monitoring Process`
+      ];
+    case 'parentPolicy':
+      return [
+        `${domain} Policy`,
+        `${domain} Governance Policy`,
+        `Delegation of Authority / Approval Matrix`,
+        `${policy}`
+      ];
+    case 'scope':
+      return [
+        { value: `Activities from trigger to documented completion of ${title}`, label: `From trigger to completion of ${title}`, impact: 'Defines the full operating boundary of the T4 procedure.' },
+        { value: `Preparation, review, approval, execution, evidence filing, and closure activities`, label: 'Preparation, review, approval, execution, evidence filing, and closure', impact: 'Covers the usual T4 procedure lifecycle.' },
+        { value: `Roles, handoffs, decision points, controls, evidence, exceptions, and escalation related to ${linked}`, label: 'Roles, handoffs, decisions, controls, evidence, exceptions, and escalation', impact: 'Ensures the SOP is executable and auditable.' },
+        ...inputs.slice(0,4).map(x => ({ value: `Use and validation of input: ${x}`, label: `Use and validation of ${x}`, impact: 'Treats this input as part of the procedure boundary.' })),
+        ...outputs.slice(0,4).map(x => ({ value: `Creation or update of output: ${x}`, label: `Creation/update of ${x}`, impact: 'Connects scope to the procedure output.' }))
+      ];
+    case 'outOfScope':
+      return [
+        { value: 'Policy-making, policy approval, or changes to the governing T2 policy', label: 'Policy-making or T2 policy changes', impact: 'Avoids putting policy ownership inside a procedure.' },
+        { value: 'Enterprise process architecture design or T1 hierarchy changes', label: 'T1 EPA or enterprise architecture changes', impact: 'Keeps the procedure at T4 level.' },
+        { value: 'Screen-by-screen system instructions that belong in a T5 Work Instruction', label: 'Screen-by-screen system instructions', impact: 'Prevents the SOP from becoming a work instruction.' },
+        { value: 'Downstream activities after the documented output has been handed off', label: 'Downstream activities after handoff', impact: 'Avoids overlap with the next process.' },
+        { value: 'System configuration, access provisioning, or technical troubleshooting unless specifically part of the procedure', label: 'System configuration or technical troubleshooting', impact: 'Prevents ownership confusion with IT/System Owner.' }
+      ];
+    case 'triggerStart':
+      return [
+        ...arr('trigger').map(t => ({ value: triggerStatement(t, title), label: triggerStatement(t, title), impact: 'Suggested from your selected trigger.' })),
+        { value: `A requestor or responsible role submits the required information to start ${title}.`, label: `Required information is submitted to start ${title}`, impact: 'Good when the procedure starts from intake.' },
+        { value: `The responsible role receives a complete request and begins review or processing.`, label: 'Complete request is received and review/processing begins', impact: 'Good when completeness is the true start point.' }
+      ];
+    case 'endPoint':
+      return [
+        ...outputs.slice(0,5).map(o => ({ value: `${o} is completed, approved where required, stored in the official repository, and handed off to the next user.`, label: `${o} is completed, stored, and handed off`, impact: 'Endpoint aligns to an output already selected.' })),
+        { value: `The final decision is communicated, required records are filed, and the request is closed.`, label: 'Final decision communicated, records filed, request closed', impact: 'Good for approval or evaluation procedures.' },
+        { value: `The system record is created or updated and evidence is retained in the official repository.`, label: 'System record updated and evidence retained', impact: 'Good for SAP/SharePoint/system-driven procedures.' }
+      ];
+    case 'inputs':
+      return [
+        ...genericInputOptions,
+        `${title} request details`,
+        `${linked} reference or parent process requirement`,
+        `${policy} requirement or authority basis`
+      ].map(x => ({ value: x, label: x, impact: 'Input must be available before the procedure can start.' }));
+    case 'outputs':
+      return [
+        ...genericOutputOptions,
+        ...records.map(r => `Completed ${r}`),
+        ...systems.map(s => `Updated ${s} record`),
+        `${title} completion status`
+      ].map(x => ({ value: x, label: x, impact: downstreamImpact(x) }));
+    case 'systems':
+      return [...new Set([...genericSystems, ...systems])].map(x => ({ value: x, label: x, impact: 'Selecting this means changes may require access, workflow, or system-owner impact review.' }));
+    case 'records':
+      return [...new Set([...genericRecords, ...records, ...inputs.map(i => `${i} record`), ...outputs.map(o => `${o} evidence`)])].map(x => ({ value: x, label: x, impact: 'This record supports evidence retention and auditability.' }));
+    case 'roles':
+      return [...new Set([...baseRoleOptions, ...roles])].map(x => ({ value: x, label: x, impact: 'This role will appear in RACI and responsibility sections.' }));
+    case 'criticalSteps':
+      return suggestSteps(title, roles, inputs, outputs, systems);
+    case 'decisionPoints':
+      return [
+        { value: 'Is the request or input complete and valid before processing?', label: 'Completeness and validity decision', impact: 'Criteria: required fields/documents complete. Authority: responsible reviewer. Evidence: checklist or validation record.' },
+        { value: 'Does the request meet policy, threshold, or eligibility requirements?', label: 'Policy / threshold / eligibility decision', impact: 'Criteria: policy or threshold met. Authority: process owner or approver. Evidence: approval basis.' },
+        { value: 'Should the request proceed, be returned, placed on hold, approved with conditions, or rejected?', label: 'Proceed / return / hold / conditional approval / reject decision', impact: 'Criteria and outcome should be documented.' },
+        { value: 'Is an exception approval required before continuing?', label: 'Exception approval decision', impact: 'Links decision point to exception authority and evidence.' },
+        { value: 'Is the final output complete, approved, stored, and ready for downstream handoff?', label: 'Closure and handoff decision', impact: 'Confirms completion evidence and downstream readiness.' }
+      ];
+    case 'exceptions':
+      return [
+        { value: 'Incomplete or invalid inputs are returned to the requestor with missing requirements identified.', label: 'Incomplete / invalid inputs', impact: 'Requires return notice and corrected submission evidence.' },
+        { value: 'Urgent processing requires documented justification, approval authority, expiry date or condition, and monitoring.', label: 'Urgent or provisional processing', impact: 'Prevents informal bypass of normal controls.' },
+        { value: 'Conflicting reviewer feedback is escalated to the Process Owner or Functional Head for decision.', label: 'Conflicting reviewer feedback', impact: 'Clarifies authority when reviewers disagree.' },
+        { value: 'System issue or access issue is escalated to the System Owner or IT Support and tracked until resolved.', label: 'System or access issue', impact: 'Separates process exception from technical issue.' },
+        { value: 'SLA breach or aging item is reported to the accountable owner for follow-up and closure.', label: 'SLA breach / aging item', impact: 'Supports monitoring and governance escalation.' }
+      ];
+    case 'timelineItems': {
+      const stepItems = (state.answers.criticalSteps || []).slice(0, 8).map(s => ({
+        value: s.action || 'Procedure step',
+        item: s.action || 'Procedure step',
+        timeline: '',
+        owner: s.owner || owner,
+        impact: 'Suggested from your numbered procedure steps.'
+      }));
+      return [
+        ...stepItems,
+        { value: 'Request intake / acknowledgement', item: 'Request intake / acknowledgement', timeline: 'TBD', owner, impact: 'Needed when requests must be acknowledged or logged.' },
+        { value: 'Completeness check', item: 'Completeness check', timeline: 'TBD', owner, impact: 'Needed when incomplete inputs can delay or weaken the process.' },
+        { value: 'Reviewer assessment / validation', item: 'Reviewer assessment / validation', timeline: 'TBD', owner: roles.find(r => /review|eval|valid|approv/i.test(r)) || owner, impact: 'Needed when another role reviews, validates, or evaluates information.' },
+        { value: 'Approval decision', item: 'Approval decision', timeline: 'TBD', owner: roles.find(r => /approv|head|owner|manager/i.test(r)) || owner, impact: 'Needed when the procedure requires approval authority.' },
+        { value: 'Exception resolution / escalation', item: 'Exception resolution / escalation', timeline: 'TBD', owner, impact: 'Needed when exceptions, incomplete items, or SLA breaches may occur.' },
+        { value: 'Closure notification and evidence filing', item: 'Closure notification and evidence filing', timeline: 'TBD', owner: roles.find(r => /custodian|record|owner/i.test(r)) || owner, impact: 'Needed so downstream users know the procedure is complete and evidence is retained.' }
+      ];
+    }
+    case 'kpis': {
+      const timelineRows = Array.isArray(state.answers.sla) ? state.answers.sla : [];
+      const hasExceptions = arr('exceptions').length > 0;
+      const hasEvidence = arr('evidence').length > 0 || records.length > 0;
+      const hasApprovals = `${arr('decisionPoints').join(' ')} ${arr('approvers').join(' ')}`.match(/approv|decision|authority/i);
+      const base = [
+        { value: `${title} end-to-end cycle time`, label: 'End-to-end cycle time', impact: 'Probe: When does the clock start and stop? Use this if management needs to know if the whole procedure is fast enough.' },
+        { value: 'SLA compliance rate', label: 'SLA compliance rate', impact: 'Probe: Did the activity finish within the target timeline? Use this if one or more SLA items were defined.' },
+        { value: 'Pending / aging request count', label: 'Pending / aging request count', impact: 'Probe: What items are open beyond normal aging? Use this if delays need daily or weekly visibility.' },
+        { value: 'Incomplete submission / rework rate', label: 'Incomplete submission / rework rate', impact: 'Probe: Are users submitting complete requirements the first time?' },
+        { value: 'Exception rate and unresolved exception aging', label: 'Exception rate / unresolved exception aging', impact: 'Probe: Are exceptions common, unresolved, or being used as informal bypasses?' },
+        { value: 'Records / evidence completeness rate', label: 'Records / evidence completeness rate', impact: 'Probe: Can the owner prove the procedure was followed?' }
+      ];
+      const dynamic = [
+        ...outputs.slice(0, 4).map(o => ({ value: `${o} completion accuracy`, label: `${o} completion accuracy`, impact: 'Probe: Is the output complete, correct, approved, and usable by downstream users?' })),
+        ...timelineRows.filter(r => r.item).slice(0, 5).map(r => ({ value: `${r.item} SLA compliance`, label: `${r.item} SLA compliance`, impact: `Probe: Track whether ${r.item} is completed within ${r.timeline || 'the approved timeline / TBD target'}.` })),
+        ...(hasApprovals ? [{ value: 'Approval aging and approval rework rate', label: 'Approval aging / approval rework', impact: 'Probe: Are approvals delayed or returned because the request lacks basis/evidence?' }] : []),
+        ...(hasExceptions ? [{ value: 'Exception closure rate', label: 'Exception closure rate', impact: 'Probe: Are exceptions closed with authority, reason, and evidence?' }] : []),
+        ...(hasEvidence ? [{ value: 'Evidence filing timeliness', label: 'Evidence filing timeliness', impact: 'Probe: Is evidence stored in the official repository on time?' }] : [])
+      ];
+      return [...base, ...dynamic];
+    }
+    case 'relatedDocs':
+      return [
+        ...priorDocs,
+        { value: state.answers.linkedProcess || `Parent T3 Process Document`, label: state.answers.linkedProcess || 'Parent T3 Process Document', impact: 'Required for hierarchy and roll-up.' },
+        { value: state.answers.parentPolicy || `Governing T2 Policy`, label: state.answers.parentPolicy || 'Governing T2 Policy', impact: 'Shows the governing rule.' },
+        { value: `Related T5 Work Instruction for system or task-level steps`, label: 'Related T5 Work Instruction', impact: 'Needed if users require screen-by-screen guidance.' },
+        ...records.slice(0,5).map(r => ({ value: r, label: r, impact: 'This form or record should be linked as a reference.' })),
+        ...systems.slice(0,4).map(sys => ({ value: `${sys} user guide or work instruction`, label: `${sys} user guide / WI`, impact: 'System-related references should be linked if users need screen-level guidance.' })),
+        ...outputs.slice(0,4).map(o => ({ value: `Downstream procedure using ${o}`, label: `Downstream procedure using ${o}`, impact: 'Suggested because this output likely triggers another process/procedure.' })),
+        { value: 'Training or communication material', label: 'Training / communication material', impact: 'May require update when the procedure changes.' }
+      ];
+    case 'approvers':
+      return [...new Set([owner, 'Process Owner', 'Functional Head', ...arr('smes'), ...roles.filter(r => /(head|owner|manager|approver|reviewer|custodian|system)/i.test(r)), controls.length ? 'Control Owner / Reviewer' : '', risks.length ? 'Risk or Compliance Reviewer' : '', systems.length ? 'System Owner' : ''].filter(Boolean))].map(x => ({ value: x, label: x, impact: 'This role will be routed for review/approval before publication.' }));
+    default:
+      return [];
+  }
+}
+
+
+function getPriorDocumentSuggestions() {
+  const history = JSON.parse(localStorage.getItem('playbookDocbotDocumentHistory') || '[]');
+  const currentDomain = String(state.answers.processDomain || '').toLowerCase();
+  const currentLinked = String(state.answers.linkedProcess || '').toLowerCase();
+  return history
+    .filter(d => d && d.title && d.title !== state.answers.procedureTitle)
+    .filter(d => !currentDomain || String(d.domain || '').toLowerCase() === currentDomain || tokenOverlap(currentLinked, d.linked || d.title || ''))
+    .slice(-8)
+    .reverse()
+    .map(d => ({
+      value: d.title,
+      label: d.title,
+      impact: `Suggested from prior locally saved capture${d.domain ? ' under ' + d.domain : ''}. Validate if this document is actually upstream, downstream, governing, or referenced.`
+    }));
+}
+
+function rememberCurrentDocument() {
+  const title = state.answers.procedureTitle;
+  if (!title) return;
+  const history = JSON.parse(localStorage.getItem('playbookDocbotDocumentHistory') || '[]');
+  const entry = {
+    title,
+    domain: state.answers.processDomain || '',
+    linked: state.answers.linkedProcess || '',
+    outputs: arr('outputs'),
+    records: arr('records'),
+    updatedAt: new Date().toISOString()
+  };
+  const filtered = history.filter(d => d.title !== title);
+  filtered.push(entry);
+  localStorage.setItem('playbookDocbotDocumentHistory', JSON.stringify(filtered.slice(-50)));
+}
+
+function triggerStatement(t, title) {
+  const map = {
+    'business-need': `A business need or request is identified and ${title} must be performed.`,
+    'approval-needed': `An approval or authorization is required before the activity can proceed.`,
+    'system-workflow': `A system transaction or workflow is initiated and requires processing or validation.`,
+    'scheduled-cycle': `A scheduled or periodic cycle begins and the assigned owner starts the activity.`,
+    'exception-event': `An exception, issue, or non-standard condition occurs and requires handling.`
+  };
+  return map[t] || `A triggering event occurs and ${title} begins.`;
+}
+
+function downstreamImpact(output) {
+  const d = inferDownstreamContext();
+  return `${d.customer} will likely use this for ${d.use}.`;
+}
+
+function inferDownstreamContext() {
+  const title = `${state.answers.procedureTitle || ''} ${state.answers.linkedProcess || ''}`.toLowerCase();
+  if (/vendor|supplier|accredit/.test(title)) return { customer: 'Purchasing, Vendor Master Custodian, and requesting business users', use: 'vendor setup, vendor use decision, and repository evidence' };
+  if (/purchase|pr|po|procure|sourcing/.test(title)) return { customer: 'Purchasing, Finance, Warehouse/Receiving, and the requestor', use: 'PO processing, receipt, invoice matching, and monitoring' };
+  if (/invoice|payment|ap|finance/.test(title)) return { customer: 'Finance, Approvers, and the requesting department', use: 'payment processing, accounting records, and audit trail' };
+  if (/hire|employee|hr|human/.test(title)) return { customer: 'Human Capital, hiring managers, payroll, and employees', use: 'employee lifecycle processing, payroll setup, and personnel records' };
+  if (/inventory|warehouse|logistics|stock/.test(title)) return { customer: 'Warehouse, Store Operations, Finance, and Inventory Control', use: 'stock movement, reconciliation, variance review, and reporting' };
+  return { customer: 'the next process owner or downstream user', use: 'processing, validation, decision-making, evidence retention, or monitoring' };
+}
+
+function suggestSteps(title, roles, inputs, outputs, systems) {
+  const requestor = roles.find(r => /request/i.test(r)) || 'Requestor / Initiator';
+  const owner = state.answers.documentOwner || roles.find(r => /owner|head|manager/i.test(r)) || 'Process Owner';
+  const reviewer = roles.find(r => /review|evaluator|finance|regulatory|checker/i.test(r)) || 'Reviewer / Evaluator';
+  const custodian = roles.find(r => /custodian|record|master|admin/i.test(r)) || 'Records Custodian';
+  return [
+    { owner: requestor, action: `Identify need and prepare required information for ${title}.` },
+    { owner: owner, action: `Receive request and confirm whether the procedure is applicable and complete.` },
+    { owner: reviewer, action: `Review required inputs, criteria, risks, and supporting evidence.` },
+    { owner: owner, action: `Resolve exceptions, obtain required approvals, and confirm decision.` },
+    { owner: custodian, action: `Update required records or systems and file evidence in the official repository.` },
+    { owner: owner, action: `Notify downstream users and close the request.` }
+  ];
+}
+

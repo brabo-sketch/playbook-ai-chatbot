@@ -21,6 +21,24 @@ Key alignment:
 
 This version captures a **T4 Procedure / SOP** first, then generates a **T3 Process Document roll-up**.
 
+## Version 4 - Dynamic guided interview improvements
+
+This version improves the chatbot so users do not need to write formal statements from scratch.
+
+Key changes:
+
+- Question 10 now drafts the purpose statement automatically using prior answers.
+- Questions 11, 12, 14, 15, 17, 23, and 24 now provide suggested choices based on earlier responses.
+- Question 14 and 15 now require one clear selection because the procedure should have one starting point and one endpoint.
+- Question 17 now explains the likely downstream user of the procedure output and lets users select/add outputs.
+- Question 23 now suggests decision points with criteria, authority, and evidence logic.
+- Question 24 now suggests exceptions with escalation, authority, and evidence logic.
+- All questions now support more guided answering through selectable choices, suggested wording, or short keyword input.
+- The validation box now checks answers after each response and flags possible inconsistencies before the user continues.
+- Procedure steps now auto-generate a starter flow that the user can edit instead of starting from a blank page.
+
+Important: this is still a browser-based prototype. The “AI logic” is rule-based and generated from prior answers in the browser. A production version should connect to a secure backend, such as Azure Function, Copilot Studio, or an approved O365 service, for true LLM reasoning and secure document generation.
+
 ## Output template alignment
 
 The T4 output now follows the uploaded MVP Procedure document structure:
@@ -141,3 +159,13 @@ For your organization, the practical architecture should be:
 - `templates/MVP Procedure for Vendor Accreditation Procedure.docx` - uploaded reference output template
 - `README.md` - setup instructions
 - `.gitignore` - excludes local secret files
+
+
+## v5 improvements
+
+This version adds smarter handling for later-stage questions where users usually do not know the answer yet:
+
+- Timeline/SLA is now a builder. The bot suggests specific activities that need timing rules, then the user enters the approved SLA or leaves it as TBD for process owner confirmation.
+- KPI suggestions are now logic-based. The bot proposes cycle time, SLA compliance, aging, exception, completeness, and evidence KPIs based on the procedure steps, outputs, risks, exceptions, and timelines already captured.
+- Related documents are treated as proposed links, not final answers. The bot suggests parent process, governing policy, T5 work instructions, forms, system guides, downstream procedures, and prior locally saved captures in the same browser. Final interlinking should be validated when the PLAYBOOK repository has more completed documents.
+- The chatbot saves a lightweight local history of document titles in the browser to improve related-document suggestions. This does not send data to a server.
