@@ -184,3 +184,10 @@ This version changes the capture experience from a form-like questionnaire into 
 - keep final unknowns as TBD instead of forcing users to guess.
 
 The prototype still runs as a static GitHub Pages site. It simulates AI behavior through rule-based logic and optional local AI draft improvement. Do not place API keys in public GitHub files.
+
+
+## v7 Startup Fix
+
+This version starts the conversation immediately with the first scoping question: whether the user wants to document a T3 Process Document or a T4 Procedure / SOP Document. The visible question header and the chat message now both show the same first question so the user knows what to enter in the chatbox.
+
+If you previously opened an older version, click **Reset** or hard refresh the browser. v7 also clears the old local conversation automatically the first time it loads.

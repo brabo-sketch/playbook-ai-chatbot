@@ -1304,6 +1304,13 @@ function suggestSteps(title, roles, inputs, outputs, systems) {
    Replaces the form-like question flow with a conversational interviewer.
    Users can answer with keywords; the bot interprets, validates, and asks probes.
 -------------------------------- */
+const APP_VERSION = 'v7-startup-scoping';
+if (localStorage.getItem('playbookDocbotVersion') !== APP_VERSION) {
+  localStorage.removeItem('playbookDocbotConversation');
+  localStorage.removeItem('playbookDocbotAnswers');
+  localStorage.setItem('playbookDocbotVersion', APP_VERSION);
+}
+
 const naturalState = {
   initialized: false,
   messages: JSON.parse(localStorage.getItem('playbookDocbotConversation') || '[]'),
@@ -1350,8 +1357,8 @@ function render() {
   setupNaturalMode();
   const q = getQuestion();
   if ($('stageLabel')) $('stageLabel').textContent = q.stage || 'AI Interview';
-  if ($('questionText')) $('questionText').textContent = 'Conversational capture';
-  if ($('questionHelper')) $('questionHelper').textContent = 'Answer with keywords, short phrases, or click suggestions. The chatbot will convert your answer into PLAYBOOK-ready documentation language.';
+  if ($('questionText')) $('questionText').textContent = stripHtml(naturalQuestionText(q));
+  if ($('questionHelper')) $('questionHelper').textContent = q.helper || 'Answer with keywords, short phrases, or click suggestions. The chatbot will convert your answer into PLAYBOOK-ready documentation language.';
   if ($('questionCounter')) $('questionCounter').textContent = `${state.index + 1} / ${PLAYBOOK_QUESTIONS.length}`;
   renderMessages();
   renderSuggestionChips(q);
@@ -1359,12 +1366,22 @@ function render() {
   renderOutputs();
   renderProgress();
   if (!naturalState.messages.length) {
-    addMessage('ai', `Hi. I’ll interview the process owner like a documentation assistant, not a form. You can answer in keywords only. I’ll interpret the answer, validate it, and ask follow-up questions if something does not make sense.`);
-    askNaturalQuestion();
-  } else {
-    const last = naturalState.messages[naturalState.messages.length - 1];
-    if (last && last.role !== 'ai-question') askNaturalQuestion(true);
+    addMessage('ai', `Hi. I’ll guide you like a documentation assistant, not a form. Let’s start with the most important scoping decision first.`);
+    askNaturalQuestion(true);
+  } else if (!hasCurrentQuestionMessage(q.id)) {
+    askNaturalQuestion(true);
   }
+}
+
+function hasCurrentQuestionMessage(questionId) {
+  const marker = `data-q=\"${questionId}\"`;
+  return naturalState.messages.some(m => m.role === 'ai-question' && String(m.html || '').includes(marker));
+}
+
+function stripHtml(html) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  return tmp.textContent || tmp.innerText || '';
 }
 
 function addMessage(role, html) {
@@ -1401,6 +1418,7 @@ function askNaturalQuestion(force = false) {
 function naturalQuestionText(q) {
   const title = state.answers.procedureTitle || 'this procedure';
   switch (q.id) {
+    case 'docMode': return 'Before we start, what are you trying to document: a Process Document or a Procedure Document? Pick one so I can adjust the level of detail.';
     case 'processDomain': return 'Which business area owns this? Just type the function name.';
     case 'linkedProcess': return 'What bigger process does this belong to? A rough name is enough.';
     case 'parentPolicy': return 'What policy, rule, DOA, memo, contract, or standard governs this? Keywords are fine.';
@@ -1425,6 +1443,7 @@ function naturalQuestionText(q) {
 }
 
 function naturalAnswerHint(q) {
+  if (q.id === 'docMode') return 'Select one only: Process Document or Procedure Document. You can also type process or procedure.';
   if (['single','smartSingle'].includes(q.type)) return 'Select one suggestion or type one short answer.';
   if (['multi','smartMulti','tags'].includes(q.type)) return 'Select multiple suggestions or type keywords separated by comma.';
   if (q.type === 'steps') return 'Use rough sequence only. The bot will turn it into numbered procedure steps.';

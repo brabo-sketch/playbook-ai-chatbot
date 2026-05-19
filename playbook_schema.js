@@ -143,10 +143,10 @@ const PLAYBOOK_SCHEMA = {
 };
 
 const PLAYBOOK_QUESTIONS = [
-  { id: 'docMode', stage: 'Document Intent', section: 'Tier Classification', question: 'What documentation output are we preparing first?', helper: 'The uploaded matrix places Procedure / SOP under T4 and Process Document under T3. Best fit is to capture T4 now, then roll it up to T3.', type: 'single', options: [
-    { value: 't4-first', label: 'T4 Procedure / SOP first', impact: 'The bot will collect scope, roles, prerequisites, numbered steps, control checks, exceptions, evidence, and linked WIs.' },
-    { value: 't4-to-t3', label: 'T4 Procedure / SOP now, then T3 Process roll-up', impact: 'Recommended. Procedure answers will later summarize into process purpose, SIPOC, RACI, risks, controls, KPIs, and document links.' },
-    { value: 't3-first', label: 'T3 Process Document first', impact: 'The bot will stay at end-to-end process level and avoid detailed task steps.' }
+  { id: 'docMode', stage: 'Document Intent', section: 'Scope Type', question: 'What do you want to document first?', helper: 'Start by choosing the documentation level. Choose Process Document if you are mapping the end-to-end flow. Choose Procedure Document if you are documenting how a specific activity is performed.', type: 'single', options: [
+    { value: 't3-first', label: 'Process Document (T3)', impact: 'Use this when the scope is end-to-end or cross-functional. The bot will focus on boundaries, SIPOC, major activities, handoffs, risks, controls, KPIs, and linked procedures.' },
+    { value: 't4-first', label: 'Procedure / SOP Document (T4)', impact: 'Use this when the scope is a specific activity or subprocess. The bot will focus on trigger, inputs, numbered steps, roles, decisions, exceptions, evidence, SLA, and outputs.' },
+    { value: 't4-to-t3', label: 'Procedure first, then roll up to Process Document', impact: 'Recommended if you are still discovering the actual work. The bot will capture T4 details first, then prepare a T3 roll-up draft for validation.' }
   ]},
   { id: 'processDomain', stage: 'SharePoint Metadata', section: 'Process Domain', question: 'Which process domain owns this document?', helper: 'This becomes the Process Domain metadata field and drives filtering, ownership, and reporting.', type: 'text', placeholder: 'Example: Procurement, Human Capital, Finance, Store Operations, Logistics' },
   { id: 'processLevel', stage: 'SharePoint Metadata', section: 'Process Level', question: 'What process level is this procedure closest to?', helper: 'For T4 Procedure / SOP, this is usually L4 subprocess or activity cluster. It should link upward to an L3 Process Document.', type: 'single', optionsFrom: 'processLevels' },
