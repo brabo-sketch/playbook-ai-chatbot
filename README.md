@@ -186,8 +186,13 @@ This version changes the capture experience from a form-like questionnaire into 
 The prototype still runs as a static GitHub Pages site. It simulates AI behavior through rule-based logic and optional local AI draft improvement. Do not place API keys in public GitHub files.
 
 
-## v7 Startup Fix
+## v8 Startup Fix
 
 This version starts the conversation immediately with the first scoping question: whether the user wants to document a T3 Process Document or a T4 Procedure / SOP Document. The visible question header and the chat message now both show the same first question so the user knows what to enter in the chatbox.
 
-If you previously opened an older version, click **Reset** or hard refresh the browser. v7 also clears the old local conversation automatically the first time it loads.
+If you previously opened an older version, click **Reset** or hard refresh the browser. v8 also clears the old local conversation automatically the first time it loads.
+
+
+## v8 fix
+
+This version replaces the broken hybrid form/chat script with a fail-safe conversational script. The chatbot now starts automatically, displays the first question, accepts typed responses, accepts suggestion chips, validates answers, and advances through the interview.
